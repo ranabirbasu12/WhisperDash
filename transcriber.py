@@ -1,4 +1,9 @@
 # transcriber.py
+import tempfile
+import os
+
+import numpy as np
+from scipy.io import wavfile
 import mlx_whisper
 
 MODEL_REPO = "mlx-community/whisper-large-v3-turbo"
@@ -13,6 +18,23 @@ class WhisperTranscriber:
         """Warm up the model by running a dummy transcription."""
         # mlx_whisper loads the model lazily on first transcribe call.
         # We mark ready after the first successful call in the app.
+        self.is_ready = True
+
+    def warmup(self):
+        """Run a tiny transcription to pre-load the model into memory."""
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        silence = np.zeros(16000, dtype=np.int16)  # 1 second of silence
+        wavfile.write(tmp.name, 16000, silence)
+        tmp.close()
+        try:
+            self.transcribe(tmp.name)
+        except Exception:
+            pass
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
         self.is_ready = True
 
     def transcribe(self, audio_path: str) -> str:

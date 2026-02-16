@@ -23,6 +23,13 @@ def create_app(
     rec = recorder or AudioRecorder()
     txr = transcriber or WhisperTranscriber()
 
+    @app.on_event("startup")
+    async def startup_warmup():
+        if hasattr(txr, 'warmup'):
+            def _warmup():
+                txr.warmup()
+            threading.Thread(target=_warmup, daemon=True).start()
+
     @app.get("/")
     async def index():
         index_path = os.path.join(STATIC_DIR, "index.html")
