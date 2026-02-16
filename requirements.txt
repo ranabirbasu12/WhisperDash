@@ -1,0 +1,12 @@
+mlx-whisper
+fastapi
+uvicorn[standard]
+websockets
+sounddevice
+numpy
+scipy
+pyperclip
+pywebview
+pytest
+pytest-asyncio
+httpx
