@@ -2,6 +2,7 @@
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
@@ -18,17 +19,16 @@ def create_app(
     recorder: AudioRecorder | None = None,
     transcriber: WhisperTranscriber | None = None,
 ) -> FastAPI:
-    app = FastAPI()
-
     rec = recorder or AudioRecorder()
     txr = transcriber or WhisperTranscriber()
 
-    @app.on_event("startup")
-    async def startup_warmup():
+    @asynccontextmanager
+    async def lifespan(app):
         if hasattr(txr, 'warmup'):
-            def _warmup():
-                txr.warmup()
-            threading.Thread(target=_warmup, daemon=True).start()
+            threading.Thread(target=txr.warmup, daemon=True).start()
+        yield
+
+    app = FastAPI(lifespan=lifespan)
 
     @app.get("/")
     async def index():
