@@ -240,6 +240,11 @@
 
     loadMoreBtn.addEventListener('click', () => loadHistory(true));
 
+    // Periodically refresh history to pick up hotkey transcriptions
+    setInterval(() => {
+        if (!isRecording) loadHistory(false);
+    }, 3000);
+
     // Start disabled
     setMicDisabled(true);
     connect();

@@ -135,13 +135,14 @@ def create_app(
         await ws.send_json({"type": "state", "state": sm.state.value})
 
         # Queue for state changes and amplitude data pushed from background threads
+        loop = asyncio.get_event_loop()
         queue: asyncio.Queue = asyncio.Queue()
 
         def on_state_change(old, new):
-            queue.put_nowait({"type": "state", "state": new.value})
+            loop.call_soon_threadsafe(queue.put_nowait, {"type": "state", "state": new.value})
 
         def on_amplitude(val):
-            queue.put_nowait({"type": "amplitude", "value": round(val, 4)})
+            loop.call_soon_threadsafe(queue.put_nowait, {"type": "amplitude", "value": round(val, 4)})
 
         sm.on_state_change(on_state_change)
         sm.on_amplitude(on_amplitude)
