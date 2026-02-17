@@ -294,6 +294,16 @@
         if (!isRecording) loadHistory(false);
     }, 3000);
 
+    // --- Segmented Control ---
+    document.querySelectorAll('.segment').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.segment').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.mode-panel').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(btn.dataset.mode + '-mode').classList.add('active');
+        });
+    });
+
     // Start disabled
     setMicDisabled(true);
     connect();

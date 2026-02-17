@@ -10,48 +10,64 @@
     <div id="app">
         <h1 class="title">WhisperDash</h1>
 
-        <div class="mic-container">
-            <button id="mic-btn" class="mic-btn" aria-label="Hold to record">
-                <svg class="mic-icon" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                </svg>
-            </button>
-            <p id="mic-label" class="mic-label">Hold to Record</p>
+        <div class="segmented-control">
+            <button class="segment active" data-mode="dictate">Dictate</button>
+            <button class="segment" data-mode="file">File</button>
         </div>
 
-        <div id="result-area" class="result-area">
-            <p id="result-text" class="result-text"></p>
+        <div class="mode-content">
+            <div id="dictate-mode" class="mode-panel active">
+                <div class="card">
+                    <div class="mic-container">
+                        <button id="mic-btn" class="mic-btn" aria-label="Hold to record">
+                            <svg class="mic-icon" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                            </svg>
+                        </button>
+                        <p id="mic-label" class="mic-label">Hold to Record</p>
+                    </div>
+                    <div id="result-area" class="result-area">
+                        <p id="result-text" class="result-text"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="file-mode" class="mode-panel">
+                <div class="card">
+                    <div class="file-section">
+                        <h2 class="section-title">Transcribe Audio File</h2>
+                        <div class="file-input-row">
+                            <input id="file-path" type="text" class="file-path-input" placeholder="Paste audio file path...">
+                            <button id="browse-btn" class="browse-btn">Browse</button>
+                        </div>
+                        <button id="transcribe-btn" class="transcribe-btn" disabled>Transcribe</button>
+                        <div id="file-progress" class="file-progress hidden">
+                            <div class="progress-bar">
+                                <div class="progress-fill loading"></div>
+                            </div>
+                            <p id="file-progress-msg" class="progress-message loading">Transcribing file...</p>
+                        </div>
+                        <div id="file-result" class="file-result hidden">
+                            <p id="file-result-text" class="file-result-text"></p>
+                            <p id="file-output-path" class="file-output-path"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div id="toast" class="toast hidden">Copied to clipboard</div>
 
-        <div class="file-section">
-            <h2 class="section-title">File Transcription</h2>
-            <div class="file-input-row">
-                <input id="file-path" type="text" class="file-path-input" placeholder="Paste audio file path...">
-                <button id="browse-btn" class="browse-btn">Browse</button>
-            </div>
-            <button id="transcribe-btn" class="transcribe-btn" disabled>Transcribe</button>
-            <div id="file-progress" class="file-progress hidden">
-                <div class="progress-bar">
-                    <div class="progress-fill loading"></div>
-                </div>
-                <p id="file-progress-msg" class="progress-message loading">Transcribing file...</p>
-            </div>
-            <div id="file-result" class="file-result hidden">
-                <p id="file-result-text" class="file-result-text"></p>
-                <p id="file-output-path" class="file-output-path"></p>
-            </div>
-        </div>
-
         <div class="history-section">
-            <div class="history-header">
-                <h2 class="history-title">History</h2>
-                <input id="history-search" type="text" class="history-search" placeholder="Search transcriptions...">
+            <div class="card history-card">
+                <div class="history-header">
+                    <h2 class="history-title">History</h2>
+                    <input id="history-search" type="text" class="history-search" placeholder="Search...">
+                </div>
+                <div id="history-list" class="history-list"></div>
+                <button id="load-more-btn" class="load-more-btn hidden">Load more</button>
             </div>
-            <div id="history-list" class="history-list"></div>
-            <button id="load-more-btn" class="load-more-btn hidden">Load more</button>
         </div>
 
         <div id="progress-container" class="progress-container">
