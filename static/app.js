@@ -111,6 +111,7 @@
                 resultText.textContent = msg.text;
                 latencyEl.textContent = msg.latency + 's';
                 showToast();
+                loadHistory(false);
                 isRecording = false;
             } else if (msg.type === 'error') {
                 micBtn.classList.remove('recording', 'transcribing');
@@ -169,7 +170,78 @@
         stopRecording();
     });
 
+    // --- History ---
+    const historyList = document.getElementById('history-list');
+    const historySearch = document.getElementById('history-search');
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    let historyOffset = 0;
+    const HISTORY_PAGE = 50;
+    let totalHistory = 0;
+
+    function formatTime(isoString) {
+        const d = new Date(isoString);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function createHistoryEntry(entry) {
+        const div = document.createElement('div');
+        div.className = 'history-entry';
+        div.innerHTML =
+            '<span class="history-time">' + formatTime(entry.timestamp) + '</span>' +
+            '<span class="history-text">' + escapeHtml(entry.text) + '</span>' +
+            '<button class="history-copy-btn" aria-label="Copy">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">' +
+                    '<path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>' +
+                '</svg>' +
+            '</button>';
+        div.querySelector('.history-copy-btn').addEventListener('click', () => {
+            navigator.clipboard.writeText(entry.text);
+            showToast();
+        });
+        return div;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    async function loadHistory(append) {
+        if (!append) {
+            historyOffset = 0;
+            historyList.innerHTML = '';
+        }
+        const resp = await fetch('/api/history?limit=' + HISTORY_PAGE + '&offset=' + historyOffset);
+        const data = await resp.json();
+        totalHistory = data.total;
+        data.entries.forEach(e => historyList.appendChild(createHistoryEntry(e)));
+        historyOffset += data.entries.length;
+        loadMoreBtn.classList.toggle('hidden', historyOffset >= totalHistory);
+    }
+
+    async function searchHistory(query) {
+        if (!query) {
+            loadHistory(false);
+            return;
+        }
+        historyList.innerHTML = '';
+        const resp = await fetch('/api/history/search?q=' + encodeURIComponent(query));
+        const data = await resp.json();
+        data.entries.forEach(e => historyList.appendChild(createHistoryEntry(e)));
+        loadMoreBtn.classList.add('hidden');
+    }
+
+    let searchTimeout = null;
+    historySearch.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => searchHistory(historySearch.value.trim()), 300);
+    });
+
+    loadMoreBtn.addEventListener('click', () => loadHistory(true));
+
     // Start disabled
     setMicDisabled(true);
     connect();
+    loadHistory(false);
 })();
