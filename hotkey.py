@@ -8,46 +8,34 @@ from clipboard import copy_to_clipboard
 
 
 class GlobalHotkey:
-    """Listens for Cmd+Shift+Space to trigger push-to-talk recording."""
+    """Listens for Right Option key to trigger push-to-talk recording."""
+
+    TRIGGER_KEY = keyboard.Key.alt_r
 
     def __init__(self, recorder: AudioRecorder, transcriber: WhisperTranscriber):
         self.recorder = recorder
         self.transcriber = transcriber
         self.is_recording = False
-        self._pressed_keys = set()
         self._listener = None
         self._processing = False
 
-    def _should_activate(self) -> bool:
-        """Check if the hotkey combo (Cmd+Shift+Space) is active."""
-        has_cmd = (
-            keyboard.Key.cmd in self._pressed_keys
-            or keyboard.Key.cmd_l in self._pressed_keys
-            or keyboard.Key.cmd_r in self._pressed_keys
-        )
-        has_shift = (
-            keyboard.Key.shift in self._pressed_keys
-            or keyboard.Key.shift_l in self._pressed_keys
-            or keyboard.Key.shift_r in self._pressed_keys
-        )
-        has_space = keyboard.Key.space in self._pressed_keys
-        return has_cmd and has_shift and has_space
-
     def _on_press(self, key):
-        self._pressed_keys.add(key)
-        if self._should_activate() and not self.is_recording and not self._processing:
-            if not self.transcriber.is_ready:
-                return
-            self.is_recording = True
-            self.recorder.start()
+        if key != self.TRIGGER_KEY:
+            return
+        if self.is_recording or self._processing:
+            return
+        if not self.transcriber.is_ready:
+            return
+        self.is_recording = True
+        self.recorder.start()
 
     def _on_release(self, key):
-        was_active = self._should_activate()
-        self._pressed_keys.discard(key)
-
-        if was_active and self.is_recording and not self._should_activate():
-            self.is_recording = False
-            threading.Thread(target=self._process_recording, daemon=True).start()
+        if key != self.TRIGGER_KEY:
+            return
+        if not self.is_recording:
+            return
+        self.is_recording = False
+        threading.Thread(target=self._process_recording, daemon=True).start()
 
     def _process_recording(self):
         """Stop recording, transcribe, copy to clipboard."""

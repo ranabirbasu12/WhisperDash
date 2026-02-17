@@ -12,21 +12,28 @@ def test_hotkey_initializes():
     assert hk._processing is False
 
 
-def test_hotkey_activates_on_cmd_shift_space():
+def test_hotkey_activates_on_right_option():
     rec = MagicMock()
     txr = MagicMock()
     txr.is_ready = True
     hk = GlobalHotkey(recorder=rec, transcriber=txr)
 
-    hk._on_press(keyboard.Key.cmd)
-    assert not hk.is_recording
-
-    hk._on_press(keyboard.Key.shift)
-    assert not hk.is_recording
-
-    hk._on_press(keyboard.Key.space)
+    hk._on_press(keyboard.Key.alt_r)
     assert hk.is_recording
     rec.start.assert_called_once()
+
+
+def test_hotkey_ignores_other_keys():
+    rec = MagicMock()
+    txr = MagicMock()
+    txr.is_ready = True
+    hk = GlobalHotkey(recorder=rec, transcriber=txr)
+
+    hk._on_press(keyboard.Key.alt_l)
+    assert not hk.is_recording
+    hk._on_press(keyboard.Key.shift)
+    assert not hk.is_recording
+    rec.start.assert_not_called()
 
 
 def test_hotkey_does_not_activate_when_model_not_ready():
@@ -35,8 +42,6 @@ def test_hotkey_does_not_activate_when_model_not_ready():
     txr.is_ready = False
     hk = GlobalHotkey(recorder=rec, transcriber=txr)
 
-    hk._on_press(keyboard.Key.cmd)
-    hk._on_press(keyboard.Key.shift)
-    hk._on_press(keyboard.Key.space)
+    hk._on_press(keyboard.Key.alt_r)
     assert not hk.is_recording
     rec.start.assert_not_called()
