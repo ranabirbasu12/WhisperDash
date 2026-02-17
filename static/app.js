@@ -13,6 +13,8 @@
     let isRecording = false;
     let modelReady = false;
     let statusPollTimer = null;
+    let recordStartTime = 0;
+    const MIN_RECORD_MS = 300;
 
     function setMicDisabled(disabled) {
         if (disabled) {
@@ -110,6 +112,11 @@
                 latencyEl.textContent = msg.latency + 's';
                 showToast();
                 isRecording = false;
+            } else if (msg.type === 'error') {
+                micBtn.classList.remove('recording', 'transcribing');
+                micLabel.textContent = 'Hold to Record';
+                resultText.textContent = msg.message;
+                isRecording = false;
             } else if (msg.type === 'model_status') {
                 updateModelState(msg);
             }
@@ -126,6 +133,22 @@
         setTimeout(() => toast.classList.add('hidden'), 2000);
     }
 
+    function stopRecording() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (!isRecording) return;
+        const elapsed = Date.now() - recordStartTime;
+        if (elapsed < MIN_RECORD_MS) {
+            // Wait until minimum time has passed, then stop
+            setTimeout(() => {
+                if (isRecording) {
+                    ws.send(JSON.stringify({ action: 'stop' }));
+                }
+            }, MIN_RECORD_MS - elapsed);
+        } else {
+            ws.send(JSON.stringify({ action: 'stop' }));
+        }
+    }
+
     // Push-to-talk: mousedown = start, mouseup = stop
     micBtn.addEventListener('mousedown', (e) => {
         e.preventDefault();
@@ -133,20 +156,17 @@
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
         if (isRecording) return;
         isRecording = true;
+        recordStartTime = Date.now();
         ws.send(JSON.stringify({ action: 'start' }));
     });
 
     micBtn.addEventListener('mouseup', (e) => {
         e.preventDefault();
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        if (!isRecording) return;
-        ws.send(JSON.stringify({ action: 'stop' }));
+        stopRecording();
     });
 
     micBtn.addEventListener('mouseleave', (e) => {
-        if (!isRecording) return;
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        ws.send(JSON.stringify({ action: 'stop' }));
+        stopRecording();
     });
 
     // Start disabled

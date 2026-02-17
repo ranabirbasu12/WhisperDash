@@ -40,7 +40,7 @@ class AudioRecorder:
             self._stream = None
 
         if not self._chunks:
-            raise RuntimeError("No audio recorded")
+            return ""
 
         audio = np.concatenate(self._chunks, axis=0)
         audio_int16 = np.int16(audio * 32767)

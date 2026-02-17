@@ -51,22 +51,33 @@ def create_app(
                     await ws.send_json({"type": "status", "status": "recording"})
 
                 elif action == "stop":
-                    await ws.send_json({"type": "status", "status": "transcribing"})
-                    wav_path = rec.stop()
-                    start_time = time.time()
-                    text = txr.transcribe(wav_path)
-                    elapsed = round(time.time() - start_time, 2)
-                    copy_to_clipboard(text)
-                    # Clean up temp file
                     try:
-                        os.unlink(wav_path)
-                    except OSError:
-                        pass
-                    await ws.send_json({
-                        "type": "result",
-                        "text": text,
-                        "latency": elapsed,
-                    })
+                        wav_path = rec.stop()
+                        if not wav_path:
+                            await ws.send_json({
+                                "type": "error",
+                                "message": "Recording too short. Hold the button longer.",
+                            })
+                            continue
+                        await ws.send_json({"type": "status", "status": "transcribing"})
+                        start_time = time.time()
+                        text = txr.transcribe(wav_path)
+                        elapsed = round(time.time() - start_time, 2)
+                        copy_to_clipboard(text)
+                        try:
+                            os.unlink(wav_path)
+                        except OSError:
+                            pass
+                        await ws.send_json({
+                            "type": "result",
+                            "text": text,
+                            "latency": elapsed,
+                        })
+                    except Exception as e:
+                        await ws.send_json({
+                            "type": "error",
+                            "message": str(e),
+                        })
 
                 elif action == "status":
                     status_data = {

@@ -43,3 +43,12 @@ def test_recorder_callback_appends_chunks():
     rec._audio_callback(fake_data, 1600, None, None)
     assert len(rec._chunks) == 1
     np.testing.assert_array_equal(rec._chunks[0], fake_data)
+
+
+def test_recorder_stop_empty_returns_empty_string():
+    rec = AudioRecorder()
+    rec.is_recording = True
+    rec._chunks = []
+    rec._stream = MagicMock()
+    path = rec.stop()
+    assert path == ""
