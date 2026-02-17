@@ -94,6 +94,9 @@ def main():
         min_size=(350, 450),
     )
 
+    # Store reference so /api/browse-file can open a file dialog
+    app.state.main_window = main_window
+
     # Handle bar resize based on state changes
     def on_state_change(old_state, new_state):
         if new_state == AppState.RECORDING or new_state == AppState.PROCESSING:

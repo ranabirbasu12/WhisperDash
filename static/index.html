@@ -26,6 +26,25 @@
 
         <div id="toast" class="toast hidden">Copied to clipboard</div>
 
+        <div class="file-section">
+            <h2 class="section-title">File Transcription</h2>
+            <div class="file-input-row">
+                <input id="file-path" type="text" class="file-path-input" placeholder="Paste audio file path...">
+                <button id="browse-btn" class="browse-btn">Browse</button>
+            </div>
+            <button id="transcribe-btn" class="transcribe-btn" disabled>Transcribe</button>
+            <div id="file-progress" class="file-progress hidden">
+                <div class="progress-bar">
+                    <div class="progress-fill loading"></div>
+                </div>
+                <p id="file-progress-msg" class="progress-message loading">Transcribing file...</p>
+            </div>
+            <div id="file-result" class="file-result hidden">
+                <p id="file-result-text" class="file-result-text"></p>
+                <p id="file-output-path" class="file-output-path"></p>
+            </div>
+        </div>
+
         <div class="history-section">
             <div class="history-header">
                 <h2 class="history-title">History</h2>

@@ -107,7 +107,6 @@ body {
 }
 
 .result-area {
-    flex: 1;
     width: 100%;
     max-width: 380px;
     background: #16162a;
@@ -115,7 +114,7 @@ body {
     padding: 16px;
     overflow-y: auto;
     margin-bottom: 16px;
-    min-height: 120px;
+    max-height: 80px;
 }
 
 .result-text {
@@ -253,6 +252,115 @@ body {
 .dot.downloading {
     background: #cc8800;
     animation: blink 1s ease-in-out infinite;
+}
+
+/* File transcription section */
+.file-section {
+    width: 100%;
+    max-width: 380px;
+    margin-bottom: 16px;
+}
+
+.section-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #8080a0;
+    margin-bottom: 8px;
+}
+
+.file-input-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.file-path-input {
+    flex: 1;
+    background: #16162a;
+    border: 1px solid #2a2a4a;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #d0d0e0;
+    outline: none;
+}
+
+.file-path-input:focus {
+    border-color: #4488ff;
+}
+
+.file-path-input::placeholder {
+    color: #4a4a6a;
+}
+
+.browse-btn {
+    background: #2a2a4a;
+    border: 1px solid #3a3a5c;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    color: #a0a0c0;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.browse-btn:hover {
+    background: #32325a;
+    border-color: #5a5a8c;
+}
+
+.transcribe-btn {
+    width: 100%;
+    background: #2a4a2a;
+    border: 1px solid #3a6a3a;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #66cc66;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.transcribe-btn:hover:not(:disabled) {
+    background: #2a5a2a;
+    border-color: #4a8a4a;
+}
+
+.transcribe-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.file-progress {
+    margin-top: 10px;
+}
+
+.file-progress.hidden {
+    display: none;
+}
+
+.file-result {
+    margin-top: 10px;
+    background: #16162a;
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.file-result.hidden {
+    display: none;
+}
+
+.file-result-text {
+    font-size: 13px;
+    color: #66cc66;
+    margin-bottom: 4px;
+}
+
+.file-output-path {
+    font-size: 11px;
+    color: #5a5a7a;
+    word-break: break-all;
 }
 
 /* History section */

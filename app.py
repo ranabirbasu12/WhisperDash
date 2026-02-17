@@ -4,6 +4,8 @@ import os
 import threading
 import time
 from contextlib import asynccontextmanager
+from datetime import date
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -16,6 +18,7 @@ from state import AppState, AppStateManager
 from history import TranscriptionHistory
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+SUPPORTED_AUDIO_EXT = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".webm", ".wma", ".aac"}
 
 
 def create_app(
@@ -66,6 +69,23 @@ def create_app(
         entries = hist.search(q, limit=limit)
         return JSONResponse({"entries": entries})
 
+    @app.get("/api/browse-file")
+    async def browse_file():
+        main_window = getattr(app.state, "main_window", None)
+        if not main_window:
+            return JSONResponse({"path": None})
+        try:
+            import webview
+            result = main_window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=("Audio Files (*.wav;*.mp3;*.m4a;*.flac;*.ogg;*.webm;*.wma;*.aac)",),
+            )
+            path = result[0] if result else None
+            return JSONResponse({"path": path})
+        except Exception:
+            return JSONResponse({"path": None})
+
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.websocket("/ws")
@@ -110,6 +130,46 @@ def create_app(
                         })
                     except Exception as e:
                         sm.set_state(AppState.ERROR)
+                        await ws.send_json({
+                            "type": "error",
+                            "message": str(e),
+                        })
+
+                elif action == "transcribe_file":
+                    file_path = data.get("path", "")
+                    p = Path(file_path)
+                    if not p.is_file():
+                        await ws.send_json({
+                            "type": "error",
+                            "message": f"File not found: {file_path}",
+                        })
+                        continue
+                    if p.suffix.lower() not in SUPPORTED_AUDIO_EXT:
+                        await ws.send_json({
+                            "type": "error",
+                            "message": f"Unsupported format: {p.suffix}",
+                        })
+                        continue
+                    await ws.send_json({
+                        "type": "file_status",
+                        "status": "transcribing",
+                        "message": f"Transcribing {p.name}...",
+                    })
+                    try:
+                        start_time = time.time()
+                        text = await asyncio.to_thread(txr.transcribe, str(p))
+                        elapsed = round(time.time() - start_time, 2)
+                        out_name = f"{p.stem}_{date.today().isoformat()}_transcription.txt"
+                        out_path = p.parent / out_name
+                        out_path.write_text(text, encoding="utf-8")
+                        hist.add(text, latency=elapsed)
+                        await ws.send_json({
+                            "type": "file_result",
+                            "text": text,
+                            "output_path": str(out_path),
+                            "latency": elapsed,
+                        })
+                    except Exception as e:
                         await ws.send_json({
                             "type": "error",
                             "message": str(e),

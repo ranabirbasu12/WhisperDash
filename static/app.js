@@ -118,8 +118,27 @@
                 micLabel.textContent = 'Hold to Record';
                 resultText.textContent = msg.message;
                 isRecording = false;
+                if (fileTranscribing) {
+                    fileTranscribing = false;
+                    transcribeBtn.disabled = !filePathInput.value.trim() || !modelReady;
+                    fileProgress.classList.add('hidden');
+                }
             } else if (msg.type === 'model_status') {
                 updateModelState(msg);
+            } else if (msg.type === 'file_status') {
+                fileTranscribing = true;
+                transcribeBtn.disabled = true;
+                fileResult.classList.add('hidden');
+                fileProgress.classList.remove('hidden');
+                fileProgressMsg.textContent = msg.message || 'Transcribing file...';
+            } else if (msg.type === 'file_result') {
+                fileTranscribing = false;
+                transcribeBtn.disabled = !filePathInput.value.trim() || !modelReady;
+                fileProgress.classList.add('hidden');
+                fileResult.classList.remove('hidden');
+                fileResultText.textContent = 'Transcription saved (' + msg.latency + 's)';
+                fileOutputPath.textContent = msg.output_path;
+                loadHistory(false);
             }
         };
 
@@ -168,6 +187,36 @@
 
     micBtn.addEventListener('mouseleave', (e) => {
         stopRecording();
+    });
+
+    // --- File Transcription ---
+    const filePathInput = document.getElementById('file-path');
+    const browseBtn = document.getElementById('browse-btn');
+    const transcribeBtn = document.getElementById('transcribe-btn');
+    const fileProgress = document.getElementById('file-progress');
+    const fileProgressMsg = document.getElementById('file-progress-msg');
+    const fileResult = document.getElementById('file-result');
+    const fileResultText = document.getElementById('file-result-text');
+    const fileOutputPath = document.getElementById('file-output-path');
+    let fileTranscribing = false;
+
+    filePathInput.addEventListener('input', () => {
+        transcribeBtn.disabled = !filePathInput.value.trim() || !modelReady || fileTranscribing;
+    });
+
+    browseBtn.addEventListener('click', async () => {
+        const resp = await fetch('/api/browse-file');
+        const data = await resp.json();
+        if (data.path) {
+            filePathInput.value = data.path;
+            transcribeBtn.disabled = !modelReady || fileTranscribing;
+        }
+    });
+
+    transcribeBtn.addEventListener('click', () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (!filePathInput.value.trim() || fileTranscribing) return;
+        ws.send(JSON.stringify({ action: 'transcribe_file', path: filePathInput.value.trim() }));
     });
 
     // --- History ---
