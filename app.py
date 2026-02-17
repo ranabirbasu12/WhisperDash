@@ -1,16 +1,19 @@
 # app.py
+import asyncio
 import os
 import threading
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from recorder import AudioRecorder
 from transcriber import WhisperTranscriber
 from clipboard import copy_to_clipboard
+from state import AppState, AppStateManager
+from history import TranscriptionHistory
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
@@ -18,9 +21,16 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 def create_app(
     recorder: AudioRecorder | None = None,
     transcriber: WhisperTranscriber | None = None,
+    state_manager: AppStateManager | None = None,
+    history: TranscriptionHistory | None = None,
 ) -> FastAPI:
     rec = recorder or AudioRecorder()
     txr = transcriber or WhisperTranscriber()
+    sm = state_manager or AppStateManager()
+    hist = history or TranscriptionHistory()
+
+    # Wire recorder amplitude to state manager
+    rec.on_amplitude = sm.push_amplitude
 
     @asynccontextmanager
     async def lifespan(app):
@@ -30,11 +40,31 @@ def create_app(
 
     app = FastAPI(lifespan=lifespan)
 
+    # Store references for external access
+    app.state.state_manager = sm
+    app.state.history = hist
+
     @app.get("/")
     async def index():
         index_path = os.path.join(STATIC_DIR, "index.html")
         with open(index_path) as f:
             return HTMLResponse(f.read())
+
+    @app.get("/bar")
+    async def bar_page():
+        bar_path = os.path.join(STATIC_DIR, "bar.html")
+        with open(bar_path) as f:
+            return HTMLResponse(f.read())
+
+    @app.get("/api/history")
+    async def get_history(limit: int = 50, offset: int = 0):
+        entries = hist.get_recent(limit=limit, offset=offset)
+        return JSONResponse({"entries": entries, "total": hist.count()})
+
+    @app.get("/api/history/search")
+    async def search_history(q: str = "", limit: int = 50):
+        entries = hist.search(q, limit=limit)
+        return JSONResponse({"entries": entries})
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -48,32 +78,38 @@ def create_app(
 
                 if action == "start":
                     rec.start()
+                    sm.set_state(AppState.RECORDING)
                     await ws.send_json({"type": "status", "status": "recording"})
 
                 elif action == "stop":
                     try:
                         wav_path = rec.stop()
                         if not wav_path:
+                            sm.set_state(AppState.IDLE)
                             await ws.send_json({
                                 "type": "error",
                                 "message": "Recording too short. Hold the button longer.",
                             })
                             continue
+                        sm.set_state(AppState.PROCESSING)
                         await ws.send_json({"type": "status", "status": "transcribing"})
                         start_time = time.time()
                         text = txr.transcribe(wav_path)
                         elapsed = round(time.time() - start_time, 2)
                         copy_to_clipboard(text)
+                        hist.add(text, latency=elapsed)
                         try:
                             os.unlink(wav_path)
                         except OSError:
                             pass
+                        sm.set_state(AppState.IDLE)
                         await ws.send_json({
                             "type": "result",
                             "text": text,
                             "latency": elapsed,
                         })
                     except Exception as e:
+                        sm.set_state(AppState.ERROR)
                         await ws.send_json({
                             "type": "error",
                             "message": str(e),
@@ -92,4 +128,81 @@ def create_app(
         except WebSocketDisconnect:
             pass
 
+    @app.websocket("/ws/bar")
+    async def bar_websocket(ws: WebSocket):
+        await ws.accept()
+        # Send initial state
+        await ws.send_json({"type": "state", "state": sm.state.value})
+
+        # Queue for state changes and amplitude data pushed from background threads
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def on_state_change(old, new):
+            queue.put_nowait({"type": "state", "state": new.value})
+
+        def on_amplitude(val):
+            queue.put_nowait({"type": "amplitude", "value": round(val, 4)})
+
+        sm.on_state_change(on_state_change)
+        sm.on_amplitude(on_amplitude)
+
+        try:
+            # Run two tasks: listen for incoming messages and push outgoing updates
+            async def push_updates():
+                while True:
+                    msg = await queue.get()
+                    await ws.send_json(msg)
+
+            async def receive_commands():
+                while True:
+                    data = await ws.receive_json()
+                    action = data.get("action")
+                    if action == "start":
+                        rec.start()
+                        sm.set_state(AppState.RECORDING)
+                    elif action == "stop":
+                        threading.Thread(
+                            target=_bar_stop_and_transcribe,
+                            args=(rec, txr, sm, hist),
+                            daemon=True,
+                        ).start()
+                    elif action == "cancel":
+                        if rec.is_recording:
+                            rec.stop()  # discard audio
+                        sm.set_state(AppState.IDLE)
+
+            await asyncio.gather(push_updates(), receive_commands())
+        except WebSocketDisconnect:
+            pass
+        finally:
+            # Remove callbacks
+            if on_state_change in sm._state_callbacks:
+                sm._state_callbacks.remove(on_state_change)
+            if on_amplitude in sm._amplitude_callbacks:
+                sm._amplitude_callbacks.remove(on_amplitude)
+
     return app
+
+
+def _bar_stop_and_transcribe(rec, txr, sm, hist):
+    """Background thread: stop recording, transcribe, update state."""
+    sm.set_state(AppState.PROCESSING)
+    try:
+        wav_path = rec.stop()
+        if not wav_path:
+            sm.set_state(AppState.IDLE)
+            return
+        start_time = time.time()
+        text = txr.transcribe(wav_path)
+        elapsed = round(time.time() - start_time, 2)
+        if text:
+            copy_to_clipboard(text)
+            hist.add(text, latency=elapsed)
+        try:
+            os.unlink(wav_path)
+        except OSError:
+            pass
+        sm.set_state(AppState.IDLE)
+    except Exception as e:
+        print(f"Bar transcription error: {e}")
+        sm.set_state(AppState.ERROR)

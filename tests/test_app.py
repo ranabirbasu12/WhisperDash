@@ -1,8 +1,12 @@
 # tests/test_app.py
+import tempfile
+import os
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from app import create_app
+from history import TranscriptionHistory
+from state import AppState, AppStateManager
 
 
 def test_static_index_served():
@@ -40,3 +44,75 @@ def test_websocket_start_stop_flow():
         assert "result" in types
         result_msg = next(m for m in messages if m["type"] == "result")
         assert result_msg["text"] == "Hello world."
+
+
+def test_bar_page_served():
+    app = create_app()
+    client = TestClient(app)
+    resp = client.get("/bar")
+    assert resp.status_code == 200
+    assert "bar" in resp.text.lower()
+
+
+def test_bar_websocket_receives_state():
+    sm = AppStateManager()
+    mock_recorder = MagicMock()
+    mock_transcriber = MagicMock()
+    mock_transcriber.is_ready = True
+    app = create_app(recorder=mock_recorder, transcriber=mock_transcriber, state_manager=sm)
+    client = TestClient(app)
+    with client.websocket_connect("/ws/bar") as ws:
+        msg = ws.receive_json()
+        assert msg["type"] == "state"
+        assert msg["state"] == "idle"
+
+
+def test_bar_websocket_start_stop():
+    sm = AppStateManager()
+    mock_recorder = MagicMock()
+    mock_recorder.stop.return_value = "/tmp/fake.wav"
+    mock_transcriber = MagicMock()
+    mock_transcriber.transcribe.return_value = "Hello"
+    mock_transcriber.is_ready = True
+    app = create_app(recorder=mock_recorder, transcriber=mock_transcriber, state_manager=sm)
+    client = TestClient(app)
+    with client.websocket_connect("/ws/bar") as ws:
+        msg = ws.receive_json()  # initial state
+        ws.send_json({"action": "start"})
+        msg = ws.receive_json()
+        assert msg["type"] == "state"
+        assert msg["state"] == "recording"
+
+
+def test_history_api_returns_entries():
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    db_path = tmp.name
+    tmp.close()
+    history = TranscriptionHistory(db_path)
+    history.add("Test entry", duration=1.0, latency=0.5)
+
+    app = create_app(history=history)
+    client = TestClient(app)
+    resp = client.get("/api/history")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["entries"]) == 1
+    assert data["entries"][0]["text"] == "Test entry"
+    os.unlink(db_path)
+
+
+def test_history_search_api():
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    db_path = tmp.name
+    tmp.close()
+    history = TranscriptionHistory(db_path)
+    history.add("The quick brown fox", duration=1.0, latency=0.5)
+    history.add("Hello world", duration=1.0, latency=0.5)
+
+    app = create_app(history=history)
+    client = TestClient(app)
+    resp = client.get("/api/history/search?q=fox")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["entries"]) == 1
+    os.unlink(db_path)
