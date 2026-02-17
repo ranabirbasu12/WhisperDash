@@ -6,4 +6,6 @@ __pycache__/
 dist/
 build/
 *.wav
+*.png
 .DS_Store
+.playwright-mcp/
