@@ -1,11 +1,13 @@
 # hotkey.py
 import os
+import time
 import threading
 from pynput import keyboard
 
 from recorder import AudioRecorder
 from transcriber import WhisperTranscriber
 from clipboard import copy_to_clipboard
+from state import AppState, AppStateManager
 
 
 class GlobalHotkey:
@@ -13,9 +15,17 @@ class GlobalHotkey:
 
     TRIGGER_KEY = keyboard.Key.alt_r
 
-    def __init__(self, recorder: AudioRecorder, transcriber: WhisperTranscriber):
+    def __init__(
+        self,
+        recorder: AudioRecorder,
+        transcriber: WhisperTranscriber,
+        state_manager: AppStateManager,
+        history=None,
+    ):
         self.recorder = recorder
         self.transcriber = transcriber
+        self.state_manager = state_manager
+        self.history = history
         self.is_recording = False
         self._listener = None
         self._processing = False
@@ -29,6 +39,7 @@ class GlobalHotkey:
             return
         self.is_recording = True
         self.recorder.start()
+        self.state_manager.set_state(AppState.RECORDING)
 
     def _on_release(self, key):
         if key != self.TRIGGER_KEY:
@@ -41,19 +52,28 @@ class GlobalHotkey:
     def _process_recording(self):
         """Stop recording, transcribe, copy to clipboard."""
         self._processing = True
+        self.state_manager.set_state(AppState.PROCESSING)
         try:
             wav_path = self.recorder.stop()
             if not wav_path:
+                self.state_manager.set_state(AppState.IDLE)
                 return
+            start_time = time.time()
             text = self.transcriber.transcribe(wav_path)
+            elapsed = round(time.time() - start_time, 2)
             if text:
                 copy_to_clipboard(text)
+                if self.history:
+                    self.history.add(text, latency=elapsed)
             try:
                 os.unlink(wav_path)
             except OSError:
                 pass
+            self.state_manager.set_state(AppState.IDLE)
         except Exception as e:
             print(f"Hotkey transcription error: {e}")
+            self.state_manager.set_state(AppState.ERROR)
+            threading.Timer(1.0, lambda: self.state_manager.set_state(AppState.IDLE)).start()
         finally:
             self._processing = False
 
