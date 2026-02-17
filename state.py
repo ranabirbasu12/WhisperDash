@@ -16,6 +16,7 @@ class AppStateManager:
         self._state = AppState.IDLE
         self._state_callbacks: list = []
         self._amplitude_callbacks: list = []
+        self._warning_callbacks: list = []
         self._amplitudes: list[float] = []
         self._lock = threading.Lock()
 
@@ -54,3 +55,13 @@ class AppStateManager:
 
     def on_amplitude(self, callback):
         self._amplitude_callbacks.append(callback)
+
+    def push_warning(self, message: str):
+        for cb in self._warning_callbacks:
+            try:
+                cb(message)
+            except Exception:
+                pass
+
+    def on_warning(self, callback):
+        self._warning_callbacks.append(callback)

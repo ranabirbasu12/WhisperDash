@@ -7,12 +7,14 @@
     const canvas = document.getElementById('waveform');
     const ctx = canvas.getContext('2d');
     const barIdle = document.querySelector('.bar-idle');
+    const warningEl = document.getElementById('bar-warning');
 
     let ws = null;
     let currentState = 'idle';
     let amplitudes = [];
     const NUM_BARS = 20;
     let animFrameId = null;
+    let warningTimeout = null;
 
     // Initialize amplitude array
     for (let i = 0; i < NUM_BARS; i++) amplitudes.push(0);
@@ -74,6 +76,16 @@
         amplitudes.push(value);
     }
 
+    function showWarning(message) {
+        warningEl.textContent = message;
+        warningEl.classList.remove('hidden');
+        if (warningTimeout) clearTimeout(warningTimeout);
+        warningTimeout = setTimeout(() => {
+            warningEl.classList.add('hidden');
+            warningTimeout = null;
+        }, 5000);
+    }
+
     function connect() {
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(`${protocol}//${location.host}/ws/bar`);
@@ -84,6 +96,8 @@
                 setState(msg.state);
             } else if (msg.type === 'amplitude') {
                 pushAmplitude(msg.value);
+            } else if (msg.type === 'warning') {
+                showWarning(msg.message);
             }
         };
 

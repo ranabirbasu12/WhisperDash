@@ -204,8 +204,12 @@ def create_app(
         def on_amplitude(val):
             loop.call_soon_threadsafe(queue.put_nowait, {"type": "amplitude", "value": round(val, 4)})
 
+        def on_warning(msg):
+            loop.call_soon_threadsafe(queue.put_nowait, {"type": "warning", "message": msg})
+
         sm.on_state_change(on_state_change)
         sm.on_amplitude(on_amplitude)
+        sm.on_warning(on_warning)
 
         try:
             # Run two tasks: listen for incoming messages and push outgoing updates
@@ -241,6 +245,8 @@ def create_app(
                 sm._state_callbacks.remove(on_state_change)
             if on_amplitude in sm._amplitude_callbacks:
                 sm._amplitude_callbacks.remove(on_amplitude)
+            if on_warning in sm._warning_callbacks:
+                sm._warning_callbacks.remove(on_warning)
 
     return app
 

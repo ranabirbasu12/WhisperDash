@@ -94,6 +94,34 @@ html, body {
     height: 28px;
 }
 
+/* Warning overlay */
+.bar-recording {
+    position: relative;
+}
+
+.bar-warning {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 6px;
+    background: rgba(40, 30, 10, 0.95);
+    color: #ff9f0a;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    opacity: 1;
+    transition: opacity 0.4s ease;
+}
+
+.bar-warning.hidden {
+    opacity: 0;
+}
+
 /* Processing */
 .bar-processing {
     background: rgba(30, 30, 30, 0.9);
