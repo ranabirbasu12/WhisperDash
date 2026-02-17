@@ -4,7 +4,9 @@ import uvicorn
 import webview
 
 from app import create_app
+from recorder import AudioRecorder
 from transcriber import WhisperTranscriber
+from hotkey import GlobalHotkey
 
 HOST = "127.0.0.1"
 PORT = 8765
@@ -17,6 +19,11 @@ def start_server(app):
 def main():
     transcriber = WhisperTranscriber()
     app = create_app(transcriber=transcriber)
+
+    # Global hotkey uses its own recorder to avoid conflicts with the UI
+    hotkey_recorder = AudioRecorder()
+    hotkey = GlobalHotkey(recorder=hotkey_recorder, transcriber=transcriber)
+    hotkey.start()
 
     server_thread = threading.Thread(
         target=start_server,

@@ -7,6 +7,7 @@ numpy
 scipy
 pyperclip
 pywebview
+pynput
 pytest
 pytest-asyncio
 httpx
