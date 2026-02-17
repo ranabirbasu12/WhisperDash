@@ -7,6 +7,7 @@ def test_transcriber_initializes_with_model_name():
     t = WhisperTranscriber()
     assert t.model_repo == "mlx-community/whisper-large-v3-turbo"
     assert t.is_ready is False
+    assert t.status == "not_started"
 
 
 @patch("transcriber.mlx_whisper.transcribe")

@@ -69,10 +69,14 @@ def create_app(
                     })
 
                 elif action == "status":
-                    await ws.send_json({
+                    status_data = {
                         "type": "model_status",
                         "ready": txr.is_ready,
-                    })
+                    }
+                    if hasattr(txr, 'status'):
+                        status_data["status"] = txr.status
+                        status_data["message"] = txr.status_message
+                    await ws.send_json(status_data)
 
         except WebSocketDisconnect:
             pass
