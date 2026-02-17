@@ -1,22 +1,11 @@
 # hotkey.py
 import os
-import subprocess
-import time
 import threading
 from pynput import keyboard
 
 from recorder import AudioRecorder
 from transcriber import WhisperTranscriber
 from clipboard import copy_to_clipboard
-
-
-def _paste():
-    """Simulate Cmd+V using AppleScript (more reliable than pynput Controller)."""
-    subprocess.run(
-        ["osascript", "-e",
-         'tell application "System Events" to keystroke "v" using command down'],
-        capture_output=True,
-    )
 
 
 class GlobalHotkey:
@@ -50,7 +39,7 @@ class GlobalHotkey:
         threading.Thread(target=self._process_recording, daemon=True).start()
 
     def _process_recording(self):
-        """Stop recording, transcribe, copy to clipboard, and paste."""
+        """Stop recording, transcribe, copy to clipboard."""
         self._processing = True
         try:
             wav_path = self.recorder.stop()
@@ -59,8 +48,6 @@ class GlobalHotkey:
             text = self.transcriber.transcribe(wav_path)
             if text:
                 copy_to_clipboard(text)
-                time.sleep(0.05)
-                _paste()
             try:
                 os.unlink(wav_path)
             except OSError:
