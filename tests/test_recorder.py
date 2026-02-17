@@ -52,3 +52,26 @@ def test_recorder_stop_empty_returns_empty_string():
     rec._stream = MagicMock()
     path = rec.stop()
     assert path == ""
+
+
+def test_audio_callback_fires_amplitude_callback():
+    rec = AudioRecorder()
+    rec.is_recording = True
+    rec._chunks = []
+    received = []
+    rec.on_amplitude = lambda val: received.append(val)
+    # Create a chunk with known RMS
+    fake_data = np.ones((1600, 1), dtype=np.float32) * 0.5
+    rec._audio_callback(fake_data, 1600, None, None)
+    assert len(received) == 1
+    assert abs(received[0] - 0.5) < 0.01
+
+
+def test_amplitude_callback_not_called_when_not_recording():
+    rec = AudioRecorder()
+    rec.is_recording = False
+    received = []
+    rec.on_amplitude = lambda val: received.append(val)
+    fake_data = np.ones((1600, 1), dtype=np.float32) * 0.5
+    rec._audio_callback(fake_data, 1600, None, None)
+    assert received == []

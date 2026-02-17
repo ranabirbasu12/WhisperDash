@@ -14,12 +14,16 @@ class AudioRecorder:
         self.is_recording = False
         self._chunks: list[np.ndarray] = []
         self._stream: sd.InputStream | None = None
+        self.on_amplitude = None
 
     def _audio_callback(self, indata, frames, time, status):
         if status:
             print(f"Audio status: {status}")
         if self.is_recording:
             self._chunks.append(indata.copy())
+            if self.on_amplitude is not None:
+                rms = float(np.sqrt(np.mean(indata ** 2)))
+                self.on_amplitude(rms)
 
     def start(self):
         self._chunks = []
