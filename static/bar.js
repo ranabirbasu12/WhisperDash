@@ -37,13 +37,14 @@
         const centerY = h / 2;
 
         for (let i = 0; i < NUM_BARS; i++) {
-            const amp = amplitudes[i] || 0;
+            // Scale RMS (typically 0.01-0.15) to visual range 0-1
+            const amp = Math.min((amplitudes[i] || 0) * 8, 1);
             const barHeight = Math.max(2, amp * h * 0.9);
             const x = i * (barWidth + gap) + gap / 2;
             const y = centerY - barHeight / 2;
 
             // Gradient from green to white
-            const intensity = Math.min(amp * 3, 1);
+            const intensity = Math.min(amp * 2, 1);
             const r = Math.round(100 + intensity * 155);
             const g = Math.round(200 + intensity * 55);
             const b = Math.round(100 + intensity * 155);
