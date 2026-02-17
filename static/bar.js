@@ -98,6 +98,8 @@
                 pushAmplitude(msg.value);
             } else if (msg.type === 'warning') {
                 showWarning(msg.message);
+            } else if (msg.type === 'hotkey') {
+                tooltip.textContent = 'Hold ' + msg.display + ' to dictate';
             }
         };
 

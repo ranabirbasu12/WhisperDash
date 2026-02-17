@@ -1,4 +1,5 @@
 # main.py
+import subprocess
 import threading
 import uvicorn
 import webview
@@ -9,6 +10,7 @@ from transcriber import WhisperTranscriber
 from hotkey import GlobalHotkey
 from state import AppState, AppStateManager
 from history import TranscriptionHistory
+from config import SettingsManager
 
 HOST = "127.0.0.1"
 PORT = 8765
@@ -37,15 +39,36 @@ def get_bar_position(width, height):
     return x, y
 
 
+def _prompt_accessibility_permission():
+    """Show a native macOS dialog and open Accessibility settings."""
+    subprocess.Popen([
+        "osascript", "-e",
+        'display dialog '
+        '"WhisperDash needs Accessibility permission to detect hotkeys.\\n\\n'
+        'Click OK to open System Settings, then add this app (or Terminal) '
+        'to the Accessibility list.\\n\\n'
+        'Restart WhisperDash after granting permission." '
+        'with title "WhisperDash" '
+        'buttons {"OK"} default button "OK" '
+        'with icon caution',
+    ])
+    # Open the Accessibility settings pane directly
+    subprocess.Popen([
+        "open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+    ])
+
+
 def main():
     transcriber = WhisperTranscriber()
     state_manager = AppStateManager()
     history = TranscriptionHistory()
+    settings = SettingsManager()
 
     app = create_app(
         transcriber=transcriber,
         state_manager=state_manager,
         history=history,
+        settings=settings,
     )
 
     # Global hotkey uses its own recorder to avoid conflicts with the UI
@@ -56,8 +79,13 @@ def main():
         transcriber=transcriber,
         state_manager=state_manager,
         history=history,
+        settings=settings,
     )
+    app.state.hotkey = hotkey
     hotkey.start()
+
+    if not hotkey.has_active_tap:
+        _prompt_accessibility_permission()
 
     server_thread = threading.Thread(
         target=start_server,

@@ -7,13 +7,13 @@ from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from recorder import AudioRecorder
 from transcriber import WhisperTranscriber
-from clipboard import copy_to_clipboard
+from clipboard import copy_to_clipboard, paste_clipboard
 from state import AppState, AppStateManager
 from history import TranscriptionHistory
 
@@ -26,6 +26,7 @@ def create_app(
     transcriber: WhisperTranscriber | None = None,
     state_manager: AppStateManager | None = None,
     history: TranscriptionHistory | None = None,
+    settings=None,
 ) -> FastAPI:
     rec = recorder or AudioRecorder()
     txr = transcriber or WhisperTranscriber()
@@ -86,6 +87,54 @@ def create_app(
         except Exception:
             return JSONResponse({"path": None})
 
+    @app.get("/api/settings/hotkey")
+    async def get_hotkey():
+        if not settings:
+            return JSONResponse({"key": "alt_r", "display": "Right Option"})
+        return JSONResponse({
+            "key": settings.hotkey_string,
+            "display": settings.hotkey_display,
+        })
+
+    @app.post("/api/settings/hotkey")
+    async def set_hotkey(request: Request):
+        body = await request.json()
+        key_str = body.get("key", "")
+        if not key_str:
+            return JSONResponse({"ok": False, "error": "Missing key"}, status_code=400)
+        if not settings:
+            return JSONResponse({"ok": False, "error": "Settings not available"}, status_code=500)
+        success = settings.set_hotkey(key_str)
+        if not success:
+            return JSONResponse({"ok": False, "error": "Invalid key"}, status_code=400)
+        return JSONResponse({
+            "ok": True,
+            "key": settings.hotkey_string,
+            "display": settings.hotkey_display,
+        })
+
+    @app.post("/api/settings/hotkey/capture")
+    async def start_capture():
+        hotkey = getattr(app.state, "hotkey", None)
+        if not hotkey:
+            return JSONResponse({"ok": False, "error": "Hotkey not available"}, status_code=500)
+        hotkey.start_key_capture()
+        return JSONResponse({"ok": True})
+
+    @app.get("/api/settings/hotkey/capture")
+    async def poll_capture():
+        hotkey = getattr(app.state, "hotkey", None)
+        if not hotkey:
+            return JSONResponse({"captured": False})
+        return JSONResponse(hotkey.poll_key_capture())
+
+    @app.delete("/api/settings/hotkey/capture")
+    async def cancel_capture():
+        hotkey = getattr(app.state, "hotkey", None)
+        if hotkey:
+            hotkey.cancel_key_capture()
+        return JSONResponse({"ok": True})
+
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.websocket("/ws")
@@ -117,6 +166,7 @@ def create_app(
                         text = txr.transcribe(wav_path)
                         elapsed = round(time.time() - start_time, 2)
                         copy_to_clipboard(text)
+                        paste_clipboard()
                         hist.add(text, latency=elapsed)
                         try:
                             os.unlink(wav_path)
@@ -207,9 +257,22 @@ def create_app(
         def on_warning(msg):
             loop.call_soon_threadsafe(queue.put_nowait, {"type": "warning", "message": msg})
 
+        def on_hotkey_change(serialized):
+            from config import display_name
+            loop.call_soon_threadsafe(
+                queue.put_nowait,
+                {"type": "hotkey", "display": display_name(serialized)}
+            )
+
         sm.on_state_change(on_state_change)
         sm.on_amplitude(on_amplitude)
         sm.on_warning(on_warning)
+        if settings:
+            settings.on_hotkey_change(on_hotkey_change)
+
+        # Send initial hotkey display name
+        if settings:
+            await ws.send_json({"type": "hotkey", "display": settings.hotkey_display})
 
         try:
             # Run two tasks: listen for incoming messages and push outgoing updates
@@ -247,6 +310,8 @@ def create_app(
                 sm._amplitude_callbacks.remove(on_amplitude)
             if on_warning in sm._warning_callbacks:
                 sm._warning_callbacks.remove(on_warning)
+            if settings and on_hotkey_change in settings._hotkey_callbacks:
+                settings._hotkey_callbacks.remove(on_hotkey_change)
 
     return app
 
@@ -264,6 +329,7 @@ def _bar_stop_and_transcribe(rec, txr, sm, hist):
         elapsed = round(time.time() - start_time, 2)
         if text:
             copy_to_clipboard(text)
+            paste_clipboard()
             hist.add(text, latency=elapsed)
         try:
             os.unlink(wav_path)

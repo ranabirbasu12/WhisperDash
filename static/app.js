@@ -304,8 +304,88 @@
         });
     });
 
+    // --- Settings: Hotkey ---
+    const hotkeyBtn = document.getElementById('hotkey-capture-btn');
+    const hotkeyDisplay = document.getElementById('hotkey-display');
+    const hotkeyResetBtn = document.getElementById('hotkey-reset-btn');
+    let capturingHotkey = false;
+    let capturePollId = null;
+
+    async function loadHotkey() {
+        try {
+            const resp = await fetch('/api/settings/hotkey');
+            const data = await resp.json();
+            hotkeyDisplay.textContent = data.display || 'Right Option';
+        } catch (e) { /* ignore */ }
+    }
+
+    async function saveHotkey(serialized) {
+        try {
+            const resp = await fetch('/api/settings/hotkey', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: serialized }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                hotkeyDisplay.textContent = data.display;
+            } else {
+                hotkeyDisplay.textContent = 'Invalid key';
+                setTimeout(loadHotkey, 1500);
+            }
+        } catch (e) {
+            hotkeyDisplay.textContent = 'Error';
+            setTimeout(loadHotkey, 1500);
+        }
+    }
+
+    async function startCapture() {
+        capturingHotkey = true;
+        hotkeyBtn.classList.add('capturing');
+        hotkeyDisplay.textContent = 'Press any key...';
+
+        // Tell backend to start pynput key capture
+        await fetch('/api/settings/hotkey/capture', { method: 'POST' });
+
+        // Poll for captured key
+        capturePollId = setInterval(async () => {
+            try {
+                const resp = await fetch('/api/settings/hotkey/capture');
+                const data = await resp.json();
+                if (data.captured) {
+                    clearInterval(capturePollId);
+                    capturePollId = null;
+                    capturingHotkey = false;
+                    hotkeyBtn.classList.remove('capturing');
+                    saveHotkey(data.key);
+                }
+            } catch (e) { /* ignore */ }
+        }, 100);
+
+        // Timeout after 10 seconds
+        setTimeout(() => {
+            if (capturingHotkey) {
+                clearInterval(capturePollId);
+                capturePollId = null;
+                capturingHotkey = false;
+                hotkeyBtn.classList.remove('capturing');
+                fetch('/api/settings/hotkey/capture', { method: 'DELETE' });
+                loadHotkey();
+            }
+        }, 10000);
+    }
+
+    hotkeyBtn.addEventListener('click', () => {
+        if (!capturingHotkey) startCapture();
+    });
+
+    hotkeyResetBtn.addEventListener('click', () => {
+        saveHotkey('alt_r');
+    });
+
     // Start disabled
     setMicDisabled(true);
     connect();
     loadHistory(false);
+    loadHotkey();
 })();

@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 from app import create_app
 from history import TranscriptionHistory
 from state import AppState, AppStateManager
+from config import SettingsManager
+import config as config_module
 
 
 def test_static_index_served():
@@ -116,3 +118,60 @@ def test_history_search_api():
     data = resp.json()
     assert len(data["entries"]) == 1
     os.unlink(db_path)
+
+
+def test_get_hotkey_endpoint():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        orig_path, orig_dir = config_module.CONFIG_PATH, config_module.CONFIG_DIR
+        config_module.CONFIG_PATH = os.path.join(tmpdir, "config.json")
+        config_module.CONFIG_DIR = tmpdir
+        try:
+            settings = SettingsManager()
+            app = create_app(settings=settings)
+            client = TestClient(app)
+            resp = client.get("/api/settings/hotkey")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["key"] == "alt_r"
+            assert data["display"] == "Right Option"
+        finally:
+            config_module.CONFIG_PATH = orig_path
+            config_module.CONFIG_DIR = orig_dir
+
+
+def test_set_hotkey_endpoint():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        orig_path, orig_dir = config_module.CONFIG_PATH, config_module.CONFIG_DIR
+        config_module.CONFIG_PATH = os.path.join(tmpdir, "config.json")
+        config_module.CONFIG_DIR = tmpdir
+        try:
+            settings = SettingsManager()
+            app = create_app(settings=settings)
+            client = TestClient(app)
+            resp = client.post("/api/settings/hotkey", json={"key": "f5"})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["ok"] is True
+            assert data["key"] == "f5"
+            assert data["display"] == "F5"
+            assert settings.hotkey_string == "f5"
+        finally:
+            config_module.CONFIG_PATH = orig_path
+            config_module.CONFIG_DIR = orig_dir
+
+
+def test_set_hotkey_invalid_key():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        orig_path, orig_dir = config_module.CONFIG_PATH, config_module.CONFIG_DIR
+        config_module.CONFIG_PATH = os.path.join(tmpdir, "config.json")
+        config_module.CONFIG_DIR = tmpdir
+        try:
+            settings = SettingsManager()
+            app = create_app(settings=settings)
+            client = TestClient(app)
+            resp = client.post("/api/settings/hotkey", json={"key": "not_a_key"})
+            assert resp.status_code == 400
+            assert settings.hotkey_string == "alt_r"
+        finally:
+            config_module.CONFIG_PATH = orig_path
+            config_module.CONFIG_DIR = orig_dir

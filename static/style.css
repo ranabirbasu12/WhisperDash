@@ -580,3 +580,73 @@ body {
 .progress-message.error {
     color: #FF453A;
 }
+
+/* --- Settings Mode --- */
+.settings-section {
+    padding: 16px;
+}
+
+.settings-desc {
+    font-size: 12px;
+    color: #636366;
+    margin-bottom: 14px;
+    line-height: 1.4;
+}
+
+.hotkey-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.hotkey-capture-btn {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid #48484a;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 15px;
+    font-weight: 500;
+    color: #f5f5f7;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: center;
+    transition: all 0.2s ease-out;
+}
+
+.hotkey-capture-btn:hover {
+    border-color: #636366;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.hotkey-capture-btn.capturing {
+    border-color: #0A84FF;
+    background: rgba(10, 132, 255, 0.08);
+    color: #0A84FF;
+    animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0.3); }
+    50% { box-shadow: 0 0 0 4px rgba(10, 132, 255, 0); }
+}
+
+.hotkey-reset-btn {
+    width: 36px;
+    height: 36px;
+    background: #3a3a3c;
+    border: 1px solid #48484a;
+    border-radius: 8px;
+    color: #98989d;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease-out;
+    flex-shrink: 0;
+}
+
+.hotkey-reset-btn:hover {
+    background: #48484a;
+    color: #e5e5e7;
+}
