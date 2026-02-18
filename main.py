@@ -99,6 +99,78 @@ def _setup_dock_menu(main_window):
     AppDelegate.applicationShouldTerminate_ = applicationShouldTerminate_
 
 
+def _patch_window_host_as_panel():
+    """Replace pywebview's WindowHost (NSWindow) with NSPanel.
+
+    NSPanel is required for a window to reliably appear above full-screen apps.
+    NSWindow + FullScreenAuxiliary is unreliable — macOS treats NSPanel specially
+    for full-screen Space participation (confirmed by Helium app and Electron).
+    """
+    import webview.platforms.cocoa as cocoa_backend
+
+    # Define an NSPanel subclass that floats above full-screen apps.
+    # Collection behavior and hidesOnDeactivate must be set at init time —
+    # setting them after the window is shown is too late for Space membership.
+    class _PanelHost(AppKit.NSPanel):
+        def initWithContentRect_styleMask_backing_defer_(self, rect, mask, backing, defer):
+            # Add NonactivatingPanel so clicking won't steal focus from full-screen apps
+            mask |= 1 << 7  # NSWindowStyleMaskNonactivatingPanel
+            self = objc.super(_PanelHost, self).initWithContentRect_styleMask_backing_defer_(
+                rect, mask, backing, defer,
+            )
+            if self is not None:
+                self.setHidesOnDeactivate_(False)
+                self.setCollectionBehavior_(
+                    1 << 0   # NSWindowCollectionBehaviorCanJoinAllSpaces
+                    | 1 << 8  # NSWindowCollectionBehaviorFullScreenAuxiliary
+                )
+            return self
+
+        def canBecomeKeyWindow(self):
+            return True
+
+        def canBecomeMainWindow(self):
+            return True
+
+    cocoa_backend.BrowserView.WindowHost = _PanelHost
+
+
+def _configure_bar_window(bar_window):
+    """Make the bar float above full-screen apps and appear on all Spaces."""
+    nswindow = bar_window.native
+    if nswindow is None:
+        return
+
+    nswindow.setLevel_(AppKit.NSStatusWindowLevel)
+    nswindow.setHidesOnDeactivate_(False)
+
+    # NonactivatingPanel: clicking the bar won't steal focus from the full-screen app
+    mask = nswindow.styleMask() | (1 << 7)  # NSWindowStyleMaskNonactivatingPanel
+    nswindow.setStyleMask_(mask)
+
+    behavior = (
+        1 << 0   # NSWindowCollectionBehaviorCanJoinAllSpaces
+        | 1 << 8  # NSWindowCollectionBehaviorFullScreenAuxiliary
+    )
+    nswindow.setCollectionBehavior_(behavior)
+
+
+def _configure_main_window(main_window):
+    """Undo NSPanel defaults on the main dashboard window.
+
+    The monkey-patched _PanelHost gives all windows FullScreenAuxiliary,
+    but only the bar should join full-screen Spaces.
+    """
+    nswindow = main_window.native
+    if nswindow is None:
+        return
+    nswindow.setHidesOnDeactivate_(False)
+    # Reset to normal managed behavior — don't join full-screen Spaces
+    nswindow.setCollectionBehavior_(
+        1 << 2  # NSWindowCollectionBehaviorManaged
+    )
+
+
 def main():
     transcriber = WhisperTranscriber()
     state_manager = AppStateManager()
@@ -141,6 +213,9 @@ def main():
         daemon=True,
     )
     server_thread.start()
+
+    # Use NSPanel instead of NSWindow so the bar can float above full-screen apps
+    _patch_window_host_as_panel()
 
     # Calculate bar position
     bar_x, bar_y = get_bar_position(BAR_IDLE_W, BAR_IDLE_H)
@@ -204,7 +279,12 @@ def main():
 
     main_window.events.closing += on_main_closing
 
-    webview.start(func=lambda: _setup_dock_menu(main_window))
+    def _on_start():
+        _setup_dock_menu(main_window)
+        _configure_bar_window(bar_window)
+        _configure_main_window(main_window)
+
+    webview.start(func=_on_start)
 
 
 if __name__ == "__main__":
