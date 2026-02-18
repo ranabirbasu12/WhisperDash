@@ -6,6 +6,7 @@ sounddevice
 numpy
 scipy
 pyperclip
+pyobjc-framework-ScreenCaptureKit
 pywebview
 pynput
 pytest

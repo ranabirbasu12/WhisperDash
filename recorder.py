@@ -14,6 +14,7 @@ class AudioRecorder:
         self.is_recording = False
         self._chunks: list[np.ndarray] = []
         self._stream: sd.InputStream | None = None
+        self._sys_capture = None
         self.on_amplitude = None
 
     def _audio_callback(self, indata, frames, time, status):
@@ -33,6 +34,16 @@ class AudioRecorder:
             dtype=np.float32,
             callback=self._audio_callback,
         )
+
+        # Start system audio capture for echo cancellation
+        try:
+            from system_audio import SystemAudioCapture
+            self._sys_capture = SystemAudioCapture(sample_rate=self.sample_rate)
+            self._sys_capture.start()
+        except Exception as e:
+            print(f"System audio capture unavailable: {e}")
+            self._sys_capture = None
+
         self._stream.start()
         self.is_recording = True
 
@@ -43,11 +54,29 @@ class AudioRecorder:
             self._stream.close()
             self._stream = None
 
+        # Get system audio reference
+        sys_audio = None
+        if self._sys_capture is not None:
+            try:
+                sys_audio = self._sys_capture.stop()
+            except Exception:
+                pass
+            self._sys_capture = None
+
         if not self._chunks:
             return ""
 
-        audio = np.concatenate(self._chunks, axis=0)
-        audio_int16 = np.int16(audio * 32767)
+        audio = np.concatenate(self._chunks, axis=0).flatten()
+
+        # Apply echo cancellation if we have system audio
+        if sys_audio is not None and len(sys_audio) > 0:
+            try:
+                from aec import nlms_echo_cancel
+                audio = nlms_echo_cancel(audio, sys_audio)
+            except Exception as e:
+                print(f"AEC failed, using raw audio: {e}")
+
+        audio_int16 = np.int16(np.clip(audio, -1.0, 1.0) * 32767)
 
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         wavfile.write(tmp.name, self.sample_rate, audio_int16)
