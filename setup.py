@@ -46,14 +46,24 @@ OPTIONS = {
         # ML stack
         'mlx', 'mlx_whisper', 'onnxruntime',
         'numpy', 'scipy', 'scipy.io', 'scipy.io.wavfile',
+        'numba', 'llvmlite',
+        # huggingface_hub and transitive deps
+        'huggingface_hub', 'tiktoken', 'regex',
+        'httpx', 'httpcore', 'h11',
+        'filelock', 'fsspec', 'tqdm', 'pyyaml', 'yaml',
+        'packaging', 'more_itertools',
         # Other dependencies
         'pyperclip', 'pydantic', 'pydantic_core',
         'typing_extensions', 'annotated_types',
-        'huggingface_hub', 'tiktoken', 'regex',
     ],
     'packages': [
         'mlx_whisper', 'numpy', 'scipy',
+        # numba + llvmlite (required by mlx_whisper.timing, has native .so)
+        'numba', 'llvmlite',
         'huggingface_hub', 'tiktoken', 'pydantic', 'pydantic_core',
+        'httpx', 'httpcore',
+        'filelock', 'fsspec', 'tqdm', 'yaml',
+        'packaging', 'more_itertools',
         'webview', 'uvicorn', 'fastapi', 'starlette', 'anyio',
         'certifi',
         # sounddevice + native PortAudio dylib (must not be zipped)
@@ -65,10 +75,14 @@ OPTIONS = {
         'CoreMedia', 'CoreFoundation', 'ScreenCaptureKit', 'AVFoundation',
     ],
     'excludes': [
-        'torch', 'torchgen', 'functorch', 'sympy',
-        'numba', 'llvmlite', 'matplotlib', 'PIL',
+        # torch is 490MB+ and only referenced by mlx_whisper/torch_whisper.py
+        # which is dead code (never imported by any mlx_whisper module)
+        'torch', 'torchgen', 'functorch',
+        'sympy', 'networkx', 'mpmath',
+        # Genuinely unused at runtime
+        'matplotlib', 'PIL',
         'IPython', 'jupyter', 'notebook',
-        'pytest', 'pytest_asyncio', 'httpx', 'pynput',
+        'pytest', 'pytest_asyncio', 'pynput',
     ],
     'plist': {
         'CFBundleName': 'WhisperDash',
@@ -76,7 +90,7 @@ OPTIONS = {
         'CFBundleIdentifier': 'com.whisperdash.app',
         'CFBundleVersion': '1.0.0',
         'CFBundleShortVersionString': '1.0.0',
-        'LSMinimumSystemVersion': '15.0',
+        'LSMinimumSystemVersion': '14.0',
         'LSArchitecturePriority': ['arm64'],
         'NSHighResolutionCapable': True,
         'NSMicrophoneUsageDescription':

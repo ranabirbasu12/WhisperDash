@@ -1,5 +1,14 @@
 # main.py
+import os
+import sys
 import threading
+
+# Fix SSL certificates in py2app bundle.
+# __boot__.py sets SSL_CERT_FILE to a non-existent path; point it at certifi's CA bundle.
+if getattr(sys, 'frozen', None) == 'macosx_app':
+    import certifi
+    os.environ['SSL_CERT_FILE'] = certifi.where()
+    os.environ.pop('SSL_CERT_DIR', None)
 
 import objc
 import AppKit
