@@ -1,5 +1,6 @@
 # app.py
 import asyncio
+import gc
 import os
 import sys
 import threading
@@ -183,6 +184,7 @@ def create_app(
                             os.unlink(wav_path)
                         except OSError:
                             pass
+                        gc.collect()
                         sm.set_state(AppState.IDLE)
                         await ws.send_json({
                             "type": "result",
@@ -347,6 +349,7 @@ def _bar_stop_and_transcribe(rec, txr, sm, hist):
             os.unlink(wav_path)
         except OSError:
             pass
+        gc.collect()
         sm.set_state(AppState.IDLE)
     except Exception as e:
         print(f"Bar transcription error: {e}")

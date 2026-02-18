@@ -1,6 +1,8 @@
 # main.py
-import subprocess
 import threading
+
+import objc
+import AppKit
 import uvicorn
 import webview
 
@@ -14,6 +16,7 @@ from config import SettingsManager
 
 HOST = "127.0.0.1"
 PORT = 8765
+_app_quitting = False
 
 # Bar dimensions per state
 BAR_IDLE_W, BAR_IDLE_H = 120, 24
@@ -39,23 +42,51 @@ def get_bar_position(width, height):
     return x, y
 
 
-def _prompt_accessibility_permission():
-    """Show a native macOS dialog and open Accessibility settings."""
-    subprocess.Popen([
-        "osascript", "-e",
-        'display dialog '
-        '"WhisperDash needs Accessibility permission to detect hotkeys.\\n\\n'
-        'Click OK to open System Settings, then add this app (or Terminal) '
-        'to the Accessibility list.\\n\\n'
-        'Restart WhisperDash after granting permission." '
-        'with title "WhisperDash" '
-        'buttons {"OK"} default button "OK" '
-        'with icon caution',
-    ])
-    # Open the Accessibility settings pane directly
-    subprocess.Popen([
-        "open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-    ])
+
+def _setup_dock_menu(main_window):
+    """Add 'Open Dashboard' and 'Quit' to the macOS dock right-click menu."""
+    import webview.platforms.cocoa as cocoa_backend
+
+    AppDelegate = cocoa_backend.BrowserView.AppDelegate
+
+    def applicationDockMenu_(self, sender):
+        menu = AppKit.NSMenu.alloc().init()
+        dash_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Open Dashboard", "openDashboard:", "",
+        )
+        dash_item.setTarget_(self)
+        menu.addItem_(dash_item)
+
+        menu.addItem_(AppKit.NSMenuItem.separatorItem())
+
+        quit_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Quit WhisperDash", "quitApp:", "",
+        )
+        quit_item.setTarget_(self)
+        menu.addItem_(quit_item)
+        return menu
+
+    def openDashboard_(self, sender):
+        main_window.show()
+
+    def quitApp_(self, sender):
+        global _app_quitting
+        _app_quitting = True
+        AppKit.NSApplication.sharedApplication().terminate_(None)
+
+    objc.classAddMethod(AppDelegate, b"applicationDockMenu:", applicationDockMenu_)
+    objc.classAddMethod(AppDelegate, b"openDashboard:", openDashboard_)
+    objc.classAddMethod(AppDelegate, b"quitApp:", quitApp_)
+
+    # Replace pywebview's applicationShouldTerminate: so standard Quit works too.
+    # The original checks window.events.closing on every window, but our main window
+    # closing handler returns False (to hide instead of close), which blocks quit.
+    def applicationShouldTerminate_(self, app):
+        global _app_quitting
+        _app_quitting = True
+        return AppKit.NSTerminateNow
+
+    AppDelegate.applicationShouldTerminate_ = applicationShouldTerminate_
 
 
 def main():
@@ -85,7 +116,11 @@ def main():
     hotkey.start()
 
     if not hotkey.has_active_tap:
-        _prompt_accessibility_permission()
+        print(
+            "Accessibility permission not granted for this build.\n"
+            "Grant it in: System Settings > Privacy & Security > Accessibility\n"
+            "If WhisperDash is already listed, toggle it OFF then ON."
+        )
 
     server_thread = threading.Thread(
         target=start_server,
@@ -147,14 +182,16 @@ def main():
 
     state_manager.on_state_change(on_state_change)
 
-    # Handle main window close: hide instead of destroy
+    # Handle main window close: hide instead of destroy (unless quitting)
     def on_main_closing():
+        if _app_quitting:
+            return True
         main_window.hide()
-        return False  # Prevent actual close
+        return False
 
     main_window.events.closing += on_main_closing
 
-    webview.start()
+    webview.start(func=lambda: _setup_dock_menu(main_window))
 
 
 if __name__ == "__main__":

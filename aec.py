@@ -37,18 +37,22 @@ def nlms_echo_cancel(
     w = np.zeros(filter_len, dtype=np.float64)
     eps = 1e-8
 
+    # Pre-allocate working buffer ONCE (reused every block iteration)
+    ref_matrix = np.zeros((block_size, filter_len), dtype=np.float64)
+
     for start in range(filter_len, n, block_size):
         end = min(start + block_size, n)
         blen = end - start
 
         # Build reference matrix: each row is ref[i-L:i] reversed (convolution)
-        ref_matrix = np.zeros((blen, filter_len), dtype=np.float64)
+        # Use a slice for the final (possibly short) block — zero-cost view
+        rm = ref_matrix[:blen]
         for j in range(blen):
             idx = start + j
-            ref_matrix[j] = ref[idx - filter_len:idx][::-1]
+            rm[j] = ref[idx - filter_len:idx][::-1]
 
         # Filter output = estimated echo for this block
-        echo_est = ref_matrix @ w
+        echo_est = rm @ w
 
         # Error = mic - echo estimate ≈ voice
         mic_block = mic[start:end].astype(np.float64)
@@ -56,8 +60,64 @@ def nlms_echo_cancel(
         output[start:end] = error.astype(np.float32)
 
         # NLMS weight update using block mean gradient
-        norms = np.sum(ref_matrix ** 2, axis=1, keepdims=True) + eps
-        gradients = ref_matrix * (error[:, np.newaxis] / norms)
+        norms = np.sum(rm ** 2, axis=1, keepdims=True) + eps
+        gradients = rm * (error[:, np.newaxis] / norms)
         w += step_size * np.mean(gradients, axis=0)
+
+    return output
+
+
+def noise_gate(
+    signal: np.ndarray,
+    sample_rate: int = 16000,
+    frame_ms: int = 20,
+    percentile: float = 25.0,
+    threshold_factor: float = 3.0,
+) -> np.ndarray:
+    """Suppress low-amplitude frames that are likely residual echo, not speech.
+
+    Estimates the noise floor from the quietest frames, then smoothly
+    attenuates anything below `noise_floor * threshold_factor`.
+    Speech frames (louder) pass through unchanged.
+
+    Args:
+        signal: Audio signal, float32.
+        sample_rate: Sample rate in Hz.
+        frame_ms: Frame length in milliseconds for RMS analysis.
+        percentile: Percentile of frame energies used as noise floor estimate.
+            25th percentile captures the quieter (non-speech) frames.
+        threshold_factor: Multiply noise floor by this to get the gate threshold.
+            Higher = more aggressive gating. 3.0 is a safe default.
+
+    Returns:
+        Gated signal, float32, same length as input.
+    """
+    frame_len = int(sample_rate * frame_ms / 1000)
+    n_frames = len(signal) // frame_len
+    if n_frames == 0:
+        return signal.copy()
+
+    # Compute RMS energy per frame
+    frames = signal[: n_frames * frame_len].reshape(n_frames, frame_len)
+    rms = np.sqrt(np.mean(frames ** 2, axis=1))
+
+    # Adaptive threshold from noise floor
+    noise_floor = np.percentile(rms, percentile)
+    loud_level = np.percentile(rms, 75)
+    threshold = noise_floor * threshold_factor
+
+    # If signal has uniform amplitude (no clear quiet vs loud distinction),
+    # there's nothing to gate — it's all speech or all silence.
+    if threshold < 1e-8 or noise_floor > loud_level * 0.5:
+        return signal.copy()
+
+    # Apply soft gain: quadratic curve from 0 (silence) to 1 (at threshold)
+    output = signal.copy()
+    for i in range(n_frames):
+        if rms[i] < threshold:
+            gain = (rms[i] / threshold) ** 2
+            start = i * frame_len
+            end = start + frame_len
+            output[start:end] *= gain
 
     return output

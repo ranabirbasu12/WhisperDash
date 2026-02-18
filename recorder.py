@@ -77,18 +77,23 @@ class AudioRecorder:
         self._chunks = []
 
         audio = np.concatenate(chunks, axis=0).flatten()
+        del chunks
 
         # Apply echo cancellation if we have system audio
         if sys_audio is not None and len(sys_audio) > 0:
             try:
-                from aec import nlms_echo_cancel
+                from aec import nlms_echo_cancel, noise_gate
                 audio = nlms_echo_cancel(audio, sys_audio)
+                audio = noise_gate(audio, sample_rate=self.sample_rate)
             except Exception as e:
                 print(f"AEC failed, using raw audio: {e}")
+        del sys_audio
 
         audio_int16 = np.int16(np.clip(audio, -1.0, 1.0) * 32767)
+        del audio
 
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         wavfile.write(tmp.name, self.sample_rate, audio_int16)
         tmp.close()
+        del audio_int16
         return tmp.name

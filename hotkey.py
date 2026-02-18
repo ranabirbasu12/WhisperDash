@@ -1,4 +1,5 @@
 # hotkey.py
+import gc
 import os
 import time
 import threading
@@ -386,6 +387,7 @@ class GlobalHotkey:
                 os.unlink(wav_path)
             except OSError:
                 pass
+            gc.collect()
             self.state_manager.set_state(AppState.IDLE)
         except Exception as e:
             print(f"Hotkey transcription error: {e}")

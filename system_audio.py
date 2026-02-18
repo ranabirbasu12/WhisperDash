@@ -128,7 +128,9 @@ class SystemAudioCapture:
         if not self._chunks:
             return np.array([], dtype=np.float32)
 
-        return np.concatenate(self._chunks, axis=0)
+        result = np.concatenate(self._chunks, axis=0)
+        self._chunks = []
+        return result
 
     @property
     def is_available(self) -> bool:

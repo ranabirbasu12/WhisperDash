@@ -1,4 +1,5 @@
 import threading
+from collections import deque
 from enum import Enum
 
 
@@ -17,7 +18,7 @@ class AppStateManager:
         self._state_callbacks: list = []
         self._amplitude_callbacks: list = []
         self._warning_callbacks: list = []
-        self._amplitudes: list[float] = []
+        self._amplitudes: deque[float] = deque(maxlen=200)
         self._lock = threading.Lock()
 
     @property
@@ -49,7 +50,7 @@ class AppStateManager:
 
     def get_amplitudes(self) -> list[float]:
         with self._lock:
-            amps = self._amplitudes[:]
+            amps = list(self._amplitudes)
             self._amplitudes.clear()
             return amps
 
