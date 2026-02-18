@@ -19,7 +19,8 @@ def test_static_index_served():
     assert "WhisperDash" in resp.text
 
 
-def test_websocket_start_stop_flow():
+@patch("app.get_wav_duration", return_value=3.5)
+def test_websocket_start_stop_flow(_mock_dur):
     mock_recorder = MagicMock()
     mock_recorder.stop.return_value = "/tmp/fake.wav"
     mock_transcriber = MagicMock()

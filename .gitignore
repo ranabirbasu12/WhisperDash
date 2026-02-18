@@ -7,5 +7,6 @@ dist/
 build/
 *.wav
 *.png
+*.iconset/
 .DS_Store
 .playwright-mcp/

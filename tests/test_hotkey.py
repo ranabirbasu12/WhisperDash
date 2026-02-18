@@ -1,6 +1,6 @@
 # tests/test_hotkey.py
 import time
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 from hotkey import GlobalHotkey
 from state import AppState, AppStateManager
 
@@ -74,8 +74,8 @@ def test_double_tap_starts_toggle_mode():
     assert hk.last_tap_time is None
 
 
-def test_double_tap_stops_toggle_mode():
-    """Double-tap while in toggle mode → stops recording & transcribes."""
+def test_single_tap_stops_toggle_mode():
+    """Single tap while in toggle mode → stops recording & transcribes."""
     hk, rec, txr, sm, history = make_hotkey()
     rec.stop.return_value = "/tmp/fake.wav"
     txr.transcribe.return_value = "Hello"
@@ -85,16 +85,7 @@ def test_double_tap_stops_toggle_mode():
     hk.toggle_mode = True
     sm.set_state(AppState.RECORDING)
 
-    # First stop-tap
-    hk.press_start_time = time.time() - 0.1
-    hk._on_press(KC_ALT_R)
-    hk.press_start_time = time.time() - 0.1
-    hk._on_release(KC_ALT_R)
-    # First tap registered
-    assert hk.last_tap_time is not None
-    assert hk.toggle_mode is True
-
-    # Second stop-tap
+    # Single short tap → stops recording
     hk._on_press(KC_ALT_R)
     hk.press_start_time = time.time() - 0.1
     hk._on_release(KC_ALT_R)
@@ -146,7 +137,8 @@ def test_hotkey_does_not_activate_when_processing():
     rec.start.assert_not_called()
 
 
-def test_process_recording_sets_states():
+@patch("hotkey.get_wav_duration", return_value=3.5)
+def test_process_recording_sets_states(_mock_dur):
     hk, rec, txr, sm, history = make_hotkey()
     rec.stop.return_value = "/tmp/fake.wav"
     txr.transcribe.return_value = "Hello"

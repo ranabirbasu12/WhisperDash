@@ -1,10 +1,17 @@
 # recorder.py
 import tempfile
+import wave
 import numpy as np
 import sounddevice as sd
 from scipy.io import wavfile
 
 SAMPLE_RATE = 16000
+
+
+def get_wav_duration(path: str) -> float:
+    """Return duration of a WAV file in seconds."""
+    with wave.open(path, "r") as wf:
+        return wf.getnframes() / wf.getframerate()
 
 
 class AudioRecorder:
@@ -66,7 +73,10 @@ class AudioRecorder:
         if not self._chunks:
             return ""
 
-        audio = np.concatenate(self._chunks, axis=0).flatten()
+        chunks = self._chunks
+        self._chunks = []
+
+        audio = np.concatenate(chunks, axis=0).flatten()
 
         # Apply echo cancellation if we have system audio
         if sys_audio is not None and len(sys_audio) > 0:

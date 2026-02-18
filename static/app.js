@@ -156,13 +156,12 @@
     function stopRecording() {
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
         if (!isRecording) return;
+        isRecording = false;
         const elapsed = Date.now() - recordStartTime;
         if (elapsed < MIN_RECORD_MS) {
             // Wait until minimum time has passed, then stop
             setTimeout(() => {
-                if (isRecording) {
-                    ws.send(JSON.stringify({ action: 'stop' }));
-                }
+                ws.send(JSON.stringify({ action: 'stop' }));
             }, MIN_RECORD_MS - elapsed);
         } else {
             ws.send(JSON.stringify({ action: 'stop' }));

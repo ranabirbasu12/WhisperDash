@@ -1,6 +1,7 @@
 # app.py
 import asyncio
 import os
+import sys
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -11,13 +12,22 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from recorder import AudioRecorder
+from recorder import AudioRecorder, get_wav_duration
 from transcriber import WhisperTranscriber
 from clipboard import copy_to_clipboard, paste_clipboard
 from state import AppState, AppStateManager
 from history import TranscriptionHistory
 
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+def _get_static_dir():
+    """Resolve static/ path for both development and py2app bundle."""
+    if getattr(sys, 'frozen', None) == 'macosx_app':
+        resource_path = os.environ.get('RESOURCEPATH', '.')
+        return os.path.join(resource_path, 'static')
+    return os.path.join(os.path.dirname(__file__), 'static')
+
+
+STATIC_DIR = _get_static_dir()
 SUPPORTED_AUDIO_EXT = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".webm", ".wma", ".aac"}
 
 
@@ -162,12 +172,13 @@ def create_app(
                             continue
                         sm.set_state(AppState.PROCESSING)
                         await ws.send_json({"type": "status", "status": "transcribing"})
+                        audio_duration = round(get_wav_duration(wav_path), 2)
                         start_time = time.time()
                         text = txr.transcribe(wav_path)
                         elapsed = round(time.time() - start_time, 2)
                         copy_to_clipboard(text)
                         paste_clipboard()
-                        hist.add(text, latency=elapsed)
+                        hist.add(text, duration=audio_duration, latency=elapsed)
                         try:
                             os.unlink(wav_path)
                         except OSError:
@@ -324,13 +335,14 @@ def _bar_stop_and_transcribe(rec, txr, sm, hist):
         if not wav_path:
             sm.set_state(AppState.IDLE)
             return
+        audio_duration = round(get_wav_duration(wav_path), 2)
         start_time = time.time()
         text = txr.transcribe(wav_path)
         elapsed = round(time.time() - start_time, 2)
         if text:
             copy_to_clipboard(text)
             paste_clipboard()
-            hist.add(text, latency=elapsed)
+            hist.add(text, duration=audio_duration, latency=elapsed)
         try:
             os.unlink(wav_path)
         except OSError:

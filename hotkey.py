@@ -26,7 +26,7 @@ from Quartz import (
     kCFRunLoopCommonModes,
 )
 
-from recorder import AudioRecorder
+from recorder import AudioRecorder, get_wav_duration
 from transcriber import WhisperTranscriber
 from clipboard import copy_to_clipboard, paste_clipboard
 from state import AppState, AppStateManager
@@ -262,19 +262,13 @@ class GlobalHotkey:
         hold_duration = time.time() - self.press_start_time
 
         if self.toggle_mode:
-            # In toggle mode — check for double-tap to stop
+            # In toggle mode — single tap to stop
             if hold_duration < self.HOLD_THRESHOLD:
-                if (self.last_tap_time is not None
-                        and (time.time() - self.last_tap_time) < self.DOUBLE_TAP_WINDOW):
-                    # Second tap within window → stop & transcribe
-                    self.last_tap_time = None
-                    self.toggle_mode = False
-                    self.is_recording = False
-                    self._cancel_duration_timers()
-                    threading.Thread(target=self._process_recording, daemon=True).start()
-                else:
-                    # First tap in toggle mode — wait for potential second tap
-                    self.last_tap_time = time.time()
+                self.last_tap_time = None
+                self.toggle_mode = False
+                self.is_recording = False
+                self._cancel_duration_timers()
+                threading.Thread(target=self._process_recording, daemon=True).start()
             # Hold in toggle mode — ignore (user just held the key briefly)
         else:
             # Not in toggle mode
@@ -379,6 +373,7 @@ class GlobalHotkey:
             if not wav_path:
                 self.state_manager.set_state(AppState.IDLE)
                 return
+            audio_duration = round(get_wav_duration(wav_path), 2)
             start_time = time.time()
             text = self.transcriber.transcribe(wav_path)
             elapsed = round(time.time() - start_time, 2)
@@ -386,7 +381,7 @@ class GlobalHotkey:
                 copy_to_clipboard(text)
                 paste_clipboard()
                 if self.history:
-                    self.history.add(text, latency=elapsed)
+                    self.history.add(text, duration=audio_duration, latency=elapsed)
             try:
                 os.unlink(wav_path)
             except OSError:
