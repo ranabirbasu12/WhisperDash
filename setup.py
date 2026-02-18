@@ -29,6 +29,7 @@ OPTIONS = {
         # Project modules (some are dynamically imported)
         'app', 'recorder', 'transcriber', 'clipboard', 'hotkey',
         'state', 'history', 'config', 'system_audio', 'aec',
+        'vad', 'pipeline',
         # PyObjC frameworks
         'objc', 'Quartz', 'AppKit', 'Foundation', 'WebKit',
         'CoreMedia', 'ScreenCaptureKit', 'PyObjCTools',
@@ -43,7 +44,7 @@ OPTIONS = {
         'starlette', 'websockets',
         'anyio', 'anyio._backends._asyncio',
         # ML stack
-        'mlx', 'mlx_whisper',
+        'mlx', 'mlx_whisper', 'onnxruntime',
         'numpy', 'scipy', 'scipy.io', 'scipy.io.wavfile',
         # Other dependencies
         'pyperclip', 'pydantic', 'pydantic_core',
@@ -57,6 +58,8 @@ OPTIONS = {
         'certifi',
         # sounddevice + native PortAudio dylib (must not be zipped)
         'sounddevice', '_sounddevice_data',
+        # ONNX Runtime for VAD (has native libraries, must not be zipped)
+        'onnxruntime',
         # PyObjC (mlx and PyObjCTools are namespace packages — handled separately)
         'objc', 'Quartz', 'AppKit', 'Foundation', 'WebKit',
         'CoreMedia', 'CoreFoundation', 'ScreenCaptureKit',

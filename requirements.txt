@@ -7,6 +7,7 @@ numpy
 scipy
 pyperclip
 pyobjc-framework-ScreenCaptureKit
+onnxruntime
 pywebview
 pynput
 pytest

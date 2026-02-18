@@ -72,11 +72,13 @@ class GlobalHotkey:
         state_manager: AppStateManager,
         history=None,
         settings=None,
+        pipeline=None,
     ):
         self.recorder = recorder
         self.transcriber = transcriber
         self.state_manager = state_manager
         self.history = history
+        self.pipeline = pipeline
         self.is_recording = False
         self._processing = False
 
@@ -253,6 +255,11 @@ class GlobalHotkey:
             self.state_manager.set_state(AppState.RECORDING)
             self.press_start_time = time.time()
             self._start_duration_timers()
+            # Start streaming pipeline if available
+            if self.pipeline is not None and self.pipeline.vad_available:
+                sys_chunks = self.recorder.get_sys_audio_chunks()
+                self.pipeline.start(sys_audio_chunks=sys_chunks)
+                self.recorder.on_vad_chunk = self.pipeline.feed
 
     def _on_release(self, keycode):
         if keycode not in self.trigger_keys:
@@ -370,25 +377,75 @@ class GlobalHotkey:
         self._processing = True
         self.state_manager.set_state(AppState.PROCESSING)
         try:
-            wav_path = self.recorder.stop()
-            if not wav_path:
+            use_streaming = (
+                self.pipeline is not None
+                and self.pipeline.vad_available
+                and self.pipeline._active
+            )
+
+            if use_streaming:
+                self.recorder.on_vad_chunk = None
+                mic_audio, sys_audio = self.recorder.stop_raw()
+
+                if mic_audio is None or len(mic_audio) == 0:
+                    self.pipeline.stop(None)
+                    self.state_manager.set_state(AppState.IDLE)
+                    return
+
+                audio_duration = round(len(mic_audio) / self.recorder.sample_rate, 2)
+
+                if audio_duration < self.pipeline.SHORT_RECORDING_THRESHOLD_S:
+                    # Short recording — single-pass with tuned params
+                    self.pipeline.stop(None)
+                    if sys_audio is not None and len(sys_audio) > 0:
+                        try:
+                            from aec import nlms_echo_cancel, noise_gate
+                            mic_audio = nlms_echo_cancel(mic_audio, sys_audio)
+                            mic_audio = noise_gate(mic_audio, sample_rate=self.recorder.sample_rate)
+                        except Exception:
+                            pass
+                    del sys_audio
+                    start_time = time.time()
+                    text = self.transcriber.transcribe_array(mic_audio)
+                    elapsed = round(time.time() - start_time, 2)
+                    del mic_audio
+                else:
+                    # Streaming path — pipeline already transcribed intermediate segments
+                    del mic_audio
+                    start_time = time.time()
+                    results = self.pipeline.stop(sys_audio)
+                    elapsed = round(time.time() - start_time, 2)
+                    del sys_audio
+                    text = " ".join(r.text for r in results if r.text)
+
+                if text:
+                    copy_to_clipboard(text)
+                    paste_clipboard()
+                    if self.history:
+                        self.history.add(text, duration=audio_duration, latency=elapsed)
+                gc.collect()
                 self.state_manager.set_state(AppState.IDLE)
-                return
-            audio_duration = round(get_wav_duration(wav_path), 2)
-            start_time = time.time()
-            text = self.transcriber.transcribe(wav_path)
-            elapsed = round(time.time() - start_time, 2)
-            if text:
-                copy_to_clipboard(text)
-                paste_clipboard()
-                if self.history:
-                    self.history.add(text, duration=audio_duration, latency=elapsed)
-            try:
-                os.unlink(wav_path)
-            except OSError:
-                pass
-            gc.collect()
-            self.state_manager.set_state(AppState.IDLE)
+            else:
+                # Original single-pass flow
+                wav_path = self.recorder.stop()
+                if not wav_path:
+                    self.state_manager.set_state(AppState.IDLE)
+                    return
+                audio_duration = round(get_wav_duration(wav_path), 2)
+                start_time = time.time()
+                text = self.transcriber.transcribe(wav_path)
+                elapsed = round(time.time() - start_time, 2)
+                if text:
+                    copy_to_clipboard(text)
+                    paste_clipboard()
+                    if self.history:
+                        self.history.add(text, duration=audio_duration, latency=elapsed)
+                try:
+                    os.unlink(wav_path)
+                except OSError:
+                    pass
+                gc.collect()
+                self.state_manager.set_state(AppState.IDLE)
         except Exception as e:
             print(f"Hotkey transcription error: {e}")
             self.state_manager.set_state(AppState.ERROR)

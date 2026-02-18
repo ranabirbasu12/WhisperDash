@@ -62,6 +62,23 @@ class WhisperTranscriber:
             audio_path,
             path_or_hf_repo=self.model_repo,
             language="en",
+            condition_on_previous_text=False,
+        )
+        self.is_ready = True
+        return result["text"].strip()
+
+    def transcribe_array(self, audio: np.ndarray) -> str:
+        """Transcribe a numpy float32 audio array directly (no WAV file).
+
+        Uses anti-hallucination parameters tuned for segmented audio.
+        """
+        result = mlx_whisper.transcribe(
+            audio,
+            path_or_hf_repo=self.model_repo,
+            language="en",
+            condition_on_previous_text=False,
+            hallucination_silence_threshold=2.0,
+            compression_ratio_threshold=2.4,
         )
         self.is_ready = True
         return result["text"].strip()

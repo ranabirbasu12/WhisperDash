@@ -38,19 +38,25 @@ def create_app(
     state_manager: AppStateManager | None = None,
     history: TranscriptionHistory | None = None,
     settings=None,
+    pipeline=None,
 ) -> FastAPI:
     rec = recorder or AudioRecorder()
     txr = transcriber or WhisperTranscriber()
     sm = state_manager or AppStateManager()
     hist = history or TranscriptionHistory()
+    pipe = pipeline
 
     # Wire recorder amplitude to state manager
     rec.on_amplitude = sm.push_amplitude
 
     @asynccontextmanager
     async def lifespan(app):
-        if hasattr(txr, 'warmup'):
-            threading.Thread(target=txr.warmup, daemon=True).start()
+        def _init_models():
+            if pipe is not None:
+                pipe.load_vad()
+            if hasattr(txr, 'warmup'):
+                txr.warmup()
+        threading.Thread(target=_init_models, daemon=True).start()
         yield
 
     app = FastAPI(lifespan=lifespan)
@@ -159,12 +165,18 @@ def create_app(
                 if action == "start":
                     rec.start()
                     sm.set_state(AppState.RECORDING)
+                    if pipe is not None and pipe.vad_available:
+                        sys_chunks = rec.get_sys_audio_chunks()
+                        pipe.start(sys_audio_chunks=sys_chunks)
+                        rec.on_vad_chunk = pipe.feed
                     await ws.send_json({"type": "status", "status": "recording"})
 
                 elif action == "stop":
                     try:
-                        wav_path = rec.stop()
-                        if not wav_path:
+                        text, elapsed, audio_duration = await asyncio.to_thread(
+                            _ws_stop_and_transcribe, rec, txr, pipe
+                        )
+                        if text is None:
                             sm.set_state(AppState.IDLE)
                             await ws.send_json({
                                 "type": "error",
@@ -173,17 +185,9 @@ def create_app(
                             continue
                         sm.set_state(AppState.PROCESSING)
                         await ws.send_json({"type": "status", "status": "transcribing"})
-                        audio_duration = round(get_wav_duration(wav_path), 2)
-                        start_time = time.time()
-                        text = txr.transcribe(wav_path)
-                        elapsed = round(time.time() - start_time, 2)
                         copy_to_clipboard(text)
                         paste_clipboard()
                         hist.add(text, duration=audio_duration, latency=elapsed)
-                        try:
-                            os.unlink(wav_path)
-                        except OSError:
-                            pass
                         gc.collect()
                         sm.set_state(AppState.IDLE)
                         await ws.send_json({
@@ -301,10 +305,14 @@ def create_app(
                     if action == "start":
                         rec.start()
                         sm.set_state(AppState.RECORDING)
+                        if pipe is not None and pipe.vad_available:
+                            sys_chunks = rec.get_sys_audio_chunks()
+                            pipe.start(sys_audio_chunks=sys_chunks)
+                            rec.on_vad_chunk = pipe.feed
                     elif action == "stop":
                         threading.Thread(
                             target=_bar_stop_and_transcribe,
-                            args=(rec, txr, sm, hist),
+                            args=(rec, txr, sm, hist, pipe),
                             daemon=True,
                         ).start()
                     elif action == "cancel":
@@ -329,26 +337,79 @@ def create_app(
     return app
 
 
-def _bar_stop_and_transcribe(rec, txr, sm, hist):
-    """Background thread: stop recording, transcribe, update state."""
-    sm.set_state(AppState.PROCESSING)
-    try:
+def _stop_and_transcribe(rec, txr, pipe):
+    """Shared stop+transcribe logic for websocket and bar handlers.
+
+    Returns (text, elapsed, audio_duration) or (None, 0, 0) if no audio.
+    """
+    use_streaming = pipe is not None and pipe.vad_available and pipe._active
+
+    if use_streaming:
+        rec.on_vad_chunk = None
+        mic_audio, sys_audio = rec.stop_raw()
+
+        if mic_audio is None or len(mic_audio) == 0:
+            pipe.stop(None)
+            return None, 0, 0
+
+        audio_duration = round(len(mic_audio) / rec.sample_rate, 2)
+
+        if audio_duration < pipe.SHORT_RECORDING_THRESHOLD_S:
+            pipe.stop(None)
+            if sys_audio is not None and len(sys_audio) > 0:
+                try:
+                    from aec import nlms_echo_cancel, noise_gate
+                    mic_audio = nlms_echo_cancel(mic_audio, sys_audio)
+                    mic_audio = noise_gate(mic_audio, sample_rate=rec.sample_rate)
+                except Exception:
+                    pass
+            del sys_audio
+            start_time = time.time()
+            text = txr.transcribe_array(mic_audio)
+            elapsed = round(time.time() - start_time, 2)
+            del mic_audio
+        else:
+            del mic_audio
+            start_time = time.time()
+            results = pipe.stop(sys_audio)
+            elapsed = round(time.time() - start_time, 2)
+            del sys_audio
+            text = " ".join(r.text for r in results if r.text)
+
+        return text or None, elapsed, audio_duration
+    else:
         wav_path = rec.stop()
         if not wav_path:
-            sm.set_state(AppState.IDLE)
-            return
+            return None, 0, 0
         audio_duration = round(get_wav_duration(wav_path), 2)
         start_time = time.time()
         text = txr.transcribe(wav_path)
         elapsed = round(time.time() - start_time, 2)
-        if text:
-            copy_to_clipboard(text)
-            paste_clipboard()
-            hist.add(text, duration=audio_duration, latency=elapsed)
         try:
             os.unlink(wav_path)
         except OSError:
             pass
+        return text or None, elapsed, audio_duration
+
+
+def _ws_stop_and_transcribe(rec, txr, pipe):
+    """Called from asyncio.to_thread for websocket stop."""
+    text, elapsed, audio_duration = _stop_and_transcribe(rec, txr, pipe)
+    gc.collect()
+    return text, elapsed, audio_duration
+
+
+def _bar_stop_and_transcribe(rec, txr, sm, hist, pipe=None):
+    """Background thread: stop recording, transcribe, update state."""
+    sm.set_state(AppState.PROCESSING)
+    try:
+        text, elapsed, audio_duration = _stop_and_transcribe(rec, txr, pipe)
+        if not text:
+            sm.set_state(AppState.IDLE)
+            return
+        copy_to_clipboard(text)
+        paste_clipboard()
+        hist.add(text, duration=audio_duration, latency=elapsed)
         gc.collect()
         sm.set_state(AppState.IDLE)
     except Exception as e:

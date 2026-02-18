@@ -10,6 +10,7 @@ from app import create_app
 from recorder import AudioRecorder
 from transcriber import WhisperTranscriber
 from hotkey import GlobalHotkey
+from pipeline import StreamingPipeline
 from state import AppState, AppStateManager
 from history import TranscriptionHistory
 from config import SettingsManager
@@ -94,12 +95,14 @@ def main():
     state_manager = AppStateManager()
     history = TranscriptionHistory()
     settings = SettingsManager()
+    pipeline = StreamingPipeline(transcriber)
 
     app = create_app(
         transcriber=transcriber,
         state_manager=state_manager,
         history=history,
         settings=settings,
+        pipeline=pipeline,
     )
 
     # Global hotkey uses its own recorder to avoid conflicts with the UI
@@ -111,6 +114,7 @@ def main():
         state_manager=state_manager,
         history=history,
         settings=settings,
+        pipeline=pipeline,
     )
     app.state.hotkey = hotkey
     hotkey.start()

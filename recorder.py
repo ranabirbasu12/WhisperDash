@@ -23,6 +23,7 @@ class AudioRecorder:
         self._stream: sd.InputStream | None = None
         self._sys_capture = None
         self.on_amplitude = None
+        self.on_vad_chunk = None
 
     def _audio_callback(self, indata, frames, time, status):
         if status:
@@ -32,6 +33,8 @@ class AudioRecorder:
             if self.on_amplitude is not None:
                 rms = float(np.sqrt(np.mean(indata ** 2)))
                 self.on_amplitude(rms)
+            if self.on_vad_chunk is not None:
+                self.on_vad_chunk(indata)
 
     def start(self):
         self._chunks = []
@@ -97,3 +100,38 @@ class AudioRecorder:
         tmp.close()
         del audio_int16
         return tmp.name
+
+    def stop_raw(self) -> tuple[np.ndarray | None, np.ndarray | None]:
+        """Stop recording and return raw mic + system audio without AEC.
+
+        Used by the streaming pipeline, which applies AEC per-segment.
+        """
+        self.is_recording = False
+        if self._stream is not None:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
+
+        sys_audio = None
+        if self._sys_capture is not None:
+            try:
+                sys_audio = self._sys_capture.stop()
+            except Exception:
+                pass
+            self._sys_capture = None
+
+        if not self._chunks:
+            return None, None
+
+        chunks = self._chunks
+        self._chunks = []
+        mic_audio = np.concatenate(chunks, axis=0).flatten()
+        del chunks
+
+        return mic_audio, sys_audio
+
+    def get_sys_audio_chunks(self) -> list | None:
+        """Return reference to system audio chunk list for live AEC alignment."""
+        if self._sys_capture is not None:
+            return self._sys_capture._chunks
+        return None

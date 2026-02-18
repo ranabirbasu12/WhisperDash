@@ -75,3 +75,52 @@ def test_amplitude_callback_not_called_when_not_recording():
     fake_data = np.ones((1600, 1), dtype=np.float32) * 0.5
     rec._audio_callback(fake_data, 1600, None, None)
     assert received == []
+
+
+def test_vad_chunk_callback_fires_during_recording():
+    rec = AudioRecorder()
+    rec.is_recording = True
+    rec._chunks = []
+    received = []
+    rec.on_vad_chunk = lambda chunk: received.append(chunk)
+    fake_data = np.ones((1600, 1), dtype=np.float32) * 0.5
+    rec._audio_callback(fake_data, 1600, None, None)
+    assert len(received) == 1
+    np.testing.assert_array_equal(received[0], fake_data)
+
+
+def test_stop_raw_returns_mic_and_sys_audio():
+    rec = AudioRecorder()
+    rec.is_recording = True
+    rec._chunks = [np.zeros((1600, 1), dtype=np.float32)]
+    rec._stream = MagicMock()
+    rec._sys_capture = None  # No system audio
+    mic, sys = rec.stop_raw()
+    assert mic is not None
+    assert len(mic) == 1600
+    assert sys is None
+    assert rec.is_recording is False
+
+
+def test_stop_raw_empty_returns_none():
+    rec = AudioRecorder()
+    rec.is_recording = True
+    rec._chunks = []
+    rec._stream = MagicMock()
+    mic, sys = rec.stop_raw()
+    assert mic is None
+    assert sys is None
+
+
+def test_get_sys_audio_chunks_returns_none_without_capture():
+    rec = AudioRecorder()
+    assert rec.get_sys_audio_chunks() is None
+
+
+def test_get_sys_audio_chunks_returns_list():
+    rec = AudioRecorder()
+    fake_capture = MagicMock()
+    fake_capture._chunks = [np.zeros(1000, dtype=np.float32)]
+    rec._sys_capture = fake_capture
+    result = rec.get_sys_audio_chunks()
+    assert result is fake_capture._chunks
