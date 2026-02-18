@@ -161,6 +161,16 @@ class SettingsManager:
                     pass
         return True
 
+    def get(self, key: str, default=None):
+        """Get an arbitrary config value."""
+        return self._data.get(key, default)
+
+    def set(self, key: str, value):
+        """Set an arbitrary config value and persist."""
+        with self._lock:
+            self._data[key] = value
+            self._save()
+
     def on_hotkey_change(self, callback):
         """Register a callback: fn(new_serialized_string)."""
         self._hotkey_callbacks.append(callback)

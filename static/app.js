@@ -1,4 +1,184 @@
 (function () {
+    // --- Onboarding ---
+    const onboardingOverlay = document.getElementById('onboarding-overlay');
+    const onboardingPermissions = document.getElementById('onboarding-permissions');
+    const onboardingModels = document.getElementById('onboarding-models');
+    const onboardingContinueBtn = document.getElementById('onboarding-continue-btn');
+    const onboardingSkipBtn = document.getElementById('onboarding-skip-btn');
+    let onboardingPollTimer = null;
+    let onboardingVisible = false;
+
+    const CHECK_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+    const WARNING_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>';
+    const SPINNER_SVG = '<svg width="12" height="12" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="31.4 31.4" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/></circle></svg>';
+
+    function renderPermissionItem(key, perm) {
+        var item = document.createElement('div');
+        item.className = 'onboarding-item' + (perm.granted ? ' granted' : '');
+
+        var iconClass = perm.granted ? 'granted' : (perm.required ? 'pending' : 'optional');
+        var icon = perm.granted ? CHECK_SVG : WARNING_SVG;
+        var statusText = perm.granted ? 'Granted' : (perm.required ? 'Required' : 'Optional');
+        var statusClass = perm.granted ? '' : (perm.required ? 'pending' : '');
+
+        var actionHtml = '';
+        if (!perm.granted) {
+            if (key === 'microphone' && perm.not_determined) {
+                actionHtml = '<button class="onboarding-grant-btn" data-action="request-mic">Allow</button>';
+            } else {
+                actionHtml = '<button class="onboarding-grant-btn" data-url="' + perm.settings_url + '">Open Settings</button>';
+            }
+        }
+
+        item.innerHTML =
+            '<div class="onboarding-status-icon ' + iconClass + '">' + icon + '</div>' +
+            '<div class="onboarding-item-info">' +
+                '<div class="onboarding-item-name">' + perm.name + '</div>' +
+                '<div class="onboarding-item-desc">' + perm.description + '</div>' +
+                '<div class="onboarding-item-status ' + statusClass + '">' + statusText + '</div>' +
+            '</div>' +
+            actionHtml;
+
+        return item;
+    }
+
+    function renderModelItem(key, model) {
+        var item = document.createElement('div');
+        item.className = 'onboarding-item' + (model.ready ? ' granted' : '');
+
+        var iconClass, icon, statusText, statusClass;
+        if (model.ready) {
+            iconClass = 'granted';
+            icon = CHECK_SVG;
+            statusText = 'Ready';
+            statusClass = '';
+        } else {
+            var st = model.status || 'loading';
+            if (st === 'downloading') {
+                iconClass = 'loading';
+                icon = SPINNER_SVG;
+                statusText = model.message || 'Downloading...';
+                statusClass = 'loading';
+            } else if (st === 'error') {
+                iconClass = 'pending';
+                icon = WARNING_SVG;
+                statusText = model.message || 'Error';
+                statusClass = 'pending';
+            } else {
+                iconClass = 'loading';
+                icon = SPINNER_SVG;
+                statusText = model.message || 'Loading...';
+                statusClass = 'loading';
+            }
+        }
+
+        item.innerHTML =
+            '<div class="onboarding-status-icon ' + iconClass + '">' + icon + '</div>' +
+            '<div class="onboarding-item-info">' +
+                '<div class="onboarding-item-name">' + model.name + '</div>' +
+                '<div class="onboarding-item-desc">' + model.description + '</div>' +
+                '<div class="onboarding-item-status ' + statusClass + '">' + statusText + '</div>' +
+            '</div>';
+
+        return item;
+    }
+
+    function updateOnboarding(data) {
+        onboardingPermissions.innerHTML = '';
+        var permOrder = ['microphone', 'accessibility', 'screen_recording'];
+        for (var i = 0; i < permOrder.length; i++) {
+            var key = permOrder[i];
+            var perm = data.permissions[key];
+            if (perm) {
+                onboardingPermissions.appendChild(renderPermissionItem(key, perm));
+            }
+        }
+
+        onboardingModels.innerHTML = '';
+        var modelKeys = Object.keys(data.models);
+        for (var j = 0; j < modelKeys.length; j++) {
+            onboardingModels.appendChild(renderModelItem(modelKeys[j], data.models[modelKeys[j]]));
+        }
+
+        // Wire action buttons
+        onboardingPermissions.querySelectorAll('.onboarding-grant-btn').forEach(function (btn) {
+            btn.onclick = async function (e) {
+                e.stopPropagation();
+                var url = btn.dataset.url;
+                var action = btn.dataset.action;
+                if (action === 'request-mic') {
+                    await fetch('/api/permissions/request-microphone', { method: 'POST' });
+                } else if (url) {
+                    await fetch('/api/permissions/open-settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: url }),
+                    });
+                }
+            };
+        });
+
+        // Enable Continue when all required permissions granted AND whisper ready
+        var allRequiredGranted = permOrder.every(function (k) {
+            var p = data.permissions[k];
+            return !p || !p.required || p.granted;
+        });
+        var whisperReady = data.models.whisper && data.models.whisper.ready;
+        onboardingContinueBtn.disabled = !(allRequiredGranted && whisperReady);
+    }
+
+    async function pollOnboarding() {
+        try {
+            var resp = await fetch('/api/permissions');
+            var data = await resp.json();
+
+            if (data.onboarding_complete) {
+                var micOk = data.permissions.microphone && data.permissions.microphone.granted;
+                var accOk = data.permissions.accessibility && data.permissions.accessibility.granted;
+                if (micOk && accOk) {
+                    hideOnboarding();
+                    return;
+                }
+            }
+
+            if (!onboardingVisible) {
+                showOnboarding();
+            }
+            updateOnboarding(data);
+        } catch (e) {
+            // Server not ready yet
+        }
+    }
+
+    function showOnboarding() {
+        onboardingVisible = true;
+        onboardingOverlay.classList.remove('hidden');
+        if (!onboardingPollTimer) {
+            onboardingPollTimer = setInterval(pollOnboarding, 2000);
+        }
+    }
+
+    function hideOnboarding() {
+        onboardingVisible = false;
+        onboardingOverlay.classList.add('hidden');
+        if (onboardingPollTimer) {
+            clearInterval(onboardingPollTimer);
+            onboardingPollTimer = null;
+        }
+    }
+
+    async function dismissOnboarding() {
+        await fetch('/api/permissions/dismiss-onboarding', { method: 'POST' });
+        hideOnboarding();
+    }
+
+    onboardingContinueBtn.addEventListener('click', dismissOnboarding);
+    onboardingSkipBtn.addEventListener('click', dismissOnboarding);
+
+    // Kick off onboarding check
+    pollOnboarding();
+
+    // --- Main App ---
     const micBtn = document.getElementById('mic-btn');
     const micLabel = document.getElementById('mic-label');
     const resultText = document.getElementById('result-text');

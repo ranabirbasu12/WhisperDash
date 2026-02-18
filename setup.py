@@ -29,10 +29,10 @@ OPTIONS = {
         # Project modules (some are dynamically imported)
         'app', 'recorder', 'transcriber', 'clipboard', 'hotkey',
         'state', 'history', 'config', 'system_audio', 'aec',
-        'vad', 'pipeline',
+        'vad', 'pipeline', 'permissions',
         # PyObjC frameworks
         'objc', 'Quartz', 'AppKit', 'Foundation', 'WebKit',
-        'CoreMedia', 'ScreenCaptureKit', 'PyObjCTools',
+        'CoreMedia', 'ScreenCaptureKit', 'PyObjCTools', 'AVFoundation',
         # sounddevice
         'sounddevice', '_sounddevice_data', '_cffi_backend',
         # FastAPI/uvicorn stack
@@ -62,7 +62,7 @@ OPTIONS = {
         'onnxruntime',
         # PyObjC (mlx and PyObjCTools are namespace packages — handled separately)
         'objc', 'Quartz', 'AppKit', 'Foundation', 'WebKit',
-        'CoreMedia', 'CoreFoundation', 'ScreenCaptureKit',
+        'CoreMedia', 'CoreFoundation', 'ScreenCaptureKit', 'AVFoundation',
     ],
     'excludes': [
         'torch', 'torchgen', 'functorch', 'sympy',

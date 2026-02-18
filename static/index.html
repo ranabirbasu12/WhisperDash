@@ -8,6 +8,23 @@
 </head>
 <body>
     <div id="app">
+        <!-- Onboarding overlay -->
+        <div id="onboarding-overlay" class="onboarding-overlay hidden">
+            <div class="onboarding-card">
+                <h1 class="onboarding-title">Welcome to WhisperDash</h1>
+                <p class="onboarding-subtitle">A few things to set up before you start dictating.</p>
+
+                <div class="onboarding-section-label">Permissions</div>
+                <div id="onboarding-permissions" class="onboarding-items"></div>
+
+                <div class="onboarding-section-label">Models</div>
+                <div id="onboarding-models" class="onboarding-items"></div>
+
+                <button id="onboarding-continue-btn" class="onboarding-continue-btn" disabled>Continue</button>
+                <button id="onboarding-skip-btn" class="onboarding-skip-btn">Skip for now</button>
+            </div>
+        </div>
+
         <h1 class="title">WhisperDash</h1>
 
         <div class="segmented-control">

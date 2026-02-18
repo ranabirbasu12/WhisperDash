@@ -152,6 +152,61 @@ def create_app(
             hotkey.cancel_key_capture()
         return JSONResponse({"ok": True})
 
+    # --- Permissions / Onboarding ---
+    @app.get("/api/permissions")
+    async def get_permissions():
+        from permissions import check_permissions
+        perms = check_permissions()
+
+        model_info = {
+            "whisper": {
+                "ready": txr.is_ready,
+                "status": getattr(txr, "status", "not_started"),
+                "message": getattr(txr, "status_message", "Initializing..."),
+                "name": "Whisper Large V3 Turbo",
+                "description": "Speech recognition model (~1.5 GB, downloads on first launch).",
+                "required": True,
+            },
+            "vad": {
+                "ready": pipe.vad_available if pipe else False,
+                "name": "Voice Activity Detection",
+                "description": "Small model (~2 MB) for real-time speech segmentation.",
+                "required": False,
+            },
+        }
+
+        onboarding_complete = False
+        if settings:
+            onboarding_complete = settings.get("setup_complete", False)
+
+        return JSONResponse({
+            "permissions": perms,
+            "models": model_info,
+            "onboarding_complete": onboarding_complete,
+        })
+
+    @app.post("/api/permissions/request-microphone")
+    async def request_mic_permission():
+        from permissions import request_microphone_access
+        request_microphone_access()
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/permissions/open-settings")
+    async def open_settings_pane(request: Request):
+        body = await request.json()
+        url = body.get("url", "")
+        if not url.startswith("x-apple.systempreferences:"):
+            return JSONResponse({"ok": False, "error": "Invalid URL"}, status_code=400)
+        from permissions import open_system_settings
+        open_system_settings(url)
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/permissions/dismiss-onboarding")
+    async def dismiss_onboarding():
+        if settings:
+            settings.set("setup_complete", True)
+        return JSONResponse({"ok": True})
+
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.websocket("/ws")
